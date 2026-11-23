@@ -1,0 +1,466 @@
+{% load static %}
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#1E3A8A">
+    <meta name="description" content="PocketNet, votre espace de travail pour apprendre et concevoir des réseaux.">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="PocketNet">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="icon" href="{% static 'brand/pocketnet-icon.svg' %}" type="image/svg+xml">
+    <link rel="icon" href="{% static 'brand/pocketnet-192.png' %}" sizes="192x192" type="image/png">
+    <link rel="apple-touch-icon" href="{% static 'brand/pocketnet-apple-180.png' %}" sizes="180x180">
+    <link rel="manifest" href="{% static 'site.webmanifest' %}">
+    <link rel="stylesheet" href="{% static 'app.css' %}?v=pwa-1">
+    <title>PocketNet — Votre espace réseau</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Aller au contenu</a>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <a class="brand" href="#accueil" aria-label="PocketNet, accueil">
+          <img src="{% static 'brand/pocketnet-icon.svg' %}" alt="">
+          <span>Pocket<span class="brand-accent">Net</span></span>
+        </a>
+        <p class="nav-caption">VOTRE ESPACE</p>
+        <nav class="primary-nav" aria-label="Navigation principale">
+          <a class="nav-link is-active" href="#accueil" aria-current="page">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>
+            <span>Accueil</span>
+          </a>
+          <a class="nav-link" href="#laboratoires">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3.75h8M9 3.75v6l-4.1 7.1a2.25 2.25 0 0 0 1.95 3.4h10.3a2.25 2.25 0 0 0 1.95-3.4L15 9.75v-6"/><path d="M8 15h8"/></svg>
+            <span>Mes laboratoires</span>
+            <span class="nav-count" id="lab-count" hidden>0</span>
+          </a>
+          <button class="nav-link" type="button" data-open-resources aria-haspopup="dialog">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5.75A2.25 2.25 0 0 1 6.75 3.5H20v15H6.75A2.25 2.25 0 0 0 4.5 20.75z"/><path d="M4.5 5.75v15M8.5 7.5h7M8.5 11h7"/></svg>
+            <span>Ressources</span>
+          </button>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="profile-mark" aria-hidden="true">P</div>
+          <div class="profile-copy">
+            <p class="profile-name">Espace personnel</p>
+            <p class="profile-caption">Données sur cet appareil</p>
+          </div>
+          <span class="online-dot" title="Application disponible"></span>
+        </div>
+      </aside>
+
+      <div class="main-column" id="accueil">
+        <header class="topbar">
+          <button class="menu-toggle" type="button" aria-controls="sidebar" aria-expanded="false">
+            <span class="menu-lines" aria-hidden="true"></span>
+            <span class="sr-only">Ouvrir la navigation</span>
+          </button>
+          <a class="mobile-brand" href="#accueil" aria-label="PocketNet, accueil">
+            <img src="{% static 'brand/pocketnet-icon.svg' %}" alt="">
+            <span>Pocket<span class="brand-accent">Net</span></span>
+          </a>
+          <div class="topbar-spacer"></div>
+          <button class="button button-primary topbar-create" type="button" data-open-create aria-label="Créer un laboratoire">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>
+            <span>Nouveau laboratoire</span>
+          </button>
+          <button class="icon-button settings-button" type="button" data-open-settings aria-label="Paramètres" title="Paramètres">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.75a3.25 3.25 0 1 0 0 6.5 3.25 3.25 0 0 0 0-6.5Z"/><path d="m19.4 15 .05.05a1.75 1.75 0 1 1-2.48 2.48l-.05-.05a1.75 1.75 0 0 0-2.98 1.24v.15a1.75 1.75 0 0 1-3.5 0v-.08a1.75 1.75 0 0 0-2.98-1.24l-.05.05a1.75 1.75 0 1 1-2.48-2.48l.05-.05a1.75 1.75 0 0 0-1.24-2.98H3.6a1.75 1.75 0 0 1 0-3.5h.08a1.75 1.75 0 0 0 1.24-2.98l-.05-.05a1.75 1.75 0 1 1 2.48-2.48l.05.05a1.75 1.75 0 0 0 2.98-1.24V1.6a1.75 1.75 0 0 1 3.5 0v.08a1.75 1.75 0 0 0 2.98 1.24l.05-.05a1.75 1.75 0 1 1 2.48 2.48l-.05.05a1.75 1.75 0 0 0 1.24 2.98h.15a1.75 1.75 0 0 1 0 3.5h-.08A1.75 1.75 0 0 0 19.4 15Z" transform="translate(0 1.5) scale(.92)"/></svg>
+          </button>
+        </header>
+
+        <main class="content" id="main-content">
+          <div class="pwa-notices" aria-label="État de l’application">
+            <div class="pwa-notice pwa-offline-notice" id="pwa-offline-notice" role="status" hidden>
+              <span class="pwa-notice-symbol" aria-hidden="true">!</span>
+              <div>
+                <strong>Connexion Internet indisponible</strong>
+                <p>PocketNet ne propose pas encore de mode hors ligne complet. Les services qui nécessitent le serveur seront indisponibles.</p>
+              </div>
+            </div>
+            <section class="pwa-notice pwa-install-notice" id="pwa-install-notice" aria-labelledby="pwa-install-title" hidden>
+              <img src="{% static 'brand/pocketnet-icon.svg' %}" alt="" width="48" height="48">
+              <div class="pwa-notice-copy">
+                <strong id="pwa-install-title">Installer PocketNet</strong>
+                <p id="pwa-install-description">Accédez rapidement à votre espace depuis l’écran d’accueil.</p>
+              </div>
+              <div class="pwa-notice-actions">
+                <button class="button button-primary pwa-notice-primary" id="pwa-install-action" type="button">Installer</button>
+                <button class="button button-quiet pwa-notice-dismiss" id="pwa-install-dismiss" type="button">Plus tard</button>
+              </div>
+            </section>
+            <section class="pwa-notice pwa-update-notice" id="pwa-update-notice" aria-labelledby="pwa-update-title" hidden>
+              <span class="pwa-notice-symbol pwa-update-symbol" aria-hidden="true">↻</span>
+              <div class="pwa-notice-copy">
+                <strong id="pwa-update-title">Une mise à jour est disponible</strong>
+                <p>Rechargez PocketNet pour utiliser la nouvelle version. Vos laboratoires locaux ne seront pas supprimés.</p>
+              </div>
+              <div class="pwa-notice-actions">
+                <button class="button button-primary pwa-notice-primary" id="pwa-update-action" type="button">Mettre à jour</button>
+              </div>
+            </section>
+          </div>
+          <section class="welcome-card" aria-labelledby="welcome-title">
+            <div class="welcome-content">
+              <span class="welcome-kicker">VOTRE ESPACE RÉSEAU</span>
+              <h1 id="welcome-title">Votre laboratoire réseau, sans limites.</h1>
+              <p>Concevez des topologies, configurez vos équipements et expérimentez les réseaux informatiques dans un environnement interactif.</p>
+              <div class="welcome-actions">
+                <button class="button button-light" type="button" data-open-create>Créer un laboratoire</button>
+                <a class="button button-hero-secondary" href="#laboratoires">Mes laboratoires</a>
+              </div>
+              <span class="welcome-footnote">Vos projets sont enregistrés localement sur cet appareil.</span>
+            </div>
+          </section>
+
+          <section class="topology-editor" id="lab-editor" aria-labelledby="editor-title" hidden>
+            <header class="editor-heading">
+              <button class="button button-quiet editor-back" type="button" data-editor-back>
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10H4m5 5-5-5 5-5"/></svg>
+                Mes laboratoires
+              </button>
+              <div class="editor-title-group">
+                <span class="section-eyebrow">ESPACE DE TRAVAIL</span>
+                <h1 id="editor-title">Laboratoire</h1>
+              </div>
+              <span class="editor-save-status" id="editor-save-status" role="status">Enregistré localement</span>
+            </header>
+
+            <div class="editor-toolbar" role="toolbar" aria-label="Outils de topologie">
+              <div class="editor-tool-group">
+                <span class="editor-toolbar-label">AJOUTER</span>
+                <button class="editor-tool-button" type="button" data-add-device="pc" title="Ajouter un PC">＋ PC</button>
+                <button class="editor-tool-button" type="button" data-add-device="laptop" title="Ajouter un laptop">＋ Laptop</button>
+                <button class="editor-tool-button" type="button" data-add-device="switch" title="Ajouter un switch Ethernet">＋ Switch</button>
+                <button class="editor-tool-button" type="button" data-add-device="router" title="Ajouter un routeur">＋ Routeur</button>
+                <button class="editor-tool-button" type="button" data-add-device="server" title="Ajouter un serveur">＋ Serveur</button>
+                <button class="editor-tool-button" type="button" data-add-device="access-point" title="Ajouter un point d’accès Wi-Fi">＋ Wi-Fi</button>
+              </div>
+              <span class="editor-toolbar-divider" aria-hidden="true"></span>
+              <div class="editor-tool-group editor-tool-group-connection">
+                <button class="editor-tool-button editor-connect-button" type="button" data-connect-mode aria-pressed="false">
+                  <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 12.5 5 15a3 3 0 0 1-4-4l3-3a3 3 0 0 1 4.2 0M12.5 7.5 15 5a3 3 0 0 1 4 4l-3 3a3 3 0 0 1-4.2 0M7 13l6-6"/></svg>
+                  Connecter
+                </button>
+                <button class="editor-tool-button" type="button" data-delete-selection disabled>Supprimer</button>
+              </div>
+              <span class="editor-toolbar-divider editor-zoom-divider" aria-hidden="true"></span>
+              <div class="editor-tool-group editor-zoom-tools" aria-label="Zoom de la zone de travail">
+                <button class="editor-tool-button editor-zoom-button" type="button" data-zoom-out aria-label="Dézoomer" title="Dézoomer">−</button>
+                <output id="editor-zoom-level" aria-live="polite">100%</output>
+                <button class="editor-tool-button editor-zoom-button" type="button" data-zoom-in aria-label="Zoomer" title="Zoomer">＋</button>
+                <button class="editor-tool-button editor-reset-view" type="button" data-reset-view>Centrer</button>
+              </div>
+              <button class="button button-primary editor-simulate" type="button" disabled title="La simulation des topologies créées dans cet éditeur n’est pas encore disponible.">
+                Démarrer la simulation
+              </button>
+            </div>
+
+            <div class="editor-layout">
+              <section class="editor-canvas-panel" aria-label="Zone de travail de la topologie">
+                <div class="editor-canvas-heading">
+                  <div>
+                    <strong>Topologie</strong>
+                    <span>Déplacez les équipements, double-cliquez un PC ou un switch pour ouvrir son terminal, ou connectez deux ports Ethernet.</span>
+                  </div>
+                  <span class="editor-canvas-legend"><i></i> Équipement sélectionné</span>
+                </div>
+                <div class="editor-viewport" id="editor-viewport" tabindex="0" aria-label="Zone de travail défilante. Déplacez un équipement par glisser-déposer.">
+                  <div class="editor-world" id="editor-world">
+                    <svg class="editor-links" id="editor-links" width="1800" height="1100" viewBox="0 0 1800 1100" aria-label="Câbles de la topologie"></svg>
+                    <div class="editor-devices" id="editor-devices"></div>
+                  </div>
+                  <div class="editor-canvas-empty" id="editor-canvas-empty">
+                    <span class="editor-empty-icon" aria-hidden="true">＋</span>
+                    <strong>Votre topologie commence ici</strong>
+                    <span>Ajoutez un équipement depuis la barre d’outils pour commencer votre topologie.</span>
+                  </div>
+                </div>
+                <p class="editor-announcement" id="editor-announcement" role="status" aria-live="polite">Ajoutez des équipements. Les connecteurs sur chaque dessin représentent des ports Ethernet distincts.</p>
+                <p class="editor-disclaimer">La topologie et la configuration running/startup des switches sont enregistrées localement. STP n’est pas simulé et reste explicitement indisponible.</p>
+              </section>
+
+              <aside class="editor-inspector" aria-label="Configuration de l’équipement sélectionné">
+                <div id="editor-inspector-content">
+                  <span class="section-eyebrow">CONFIGURATION</span>
+                  <h3>Aucun équipement sélectionné</h3>
+                  <p class="editor-inspector-empty">Sélectionnez un équipement ou un câble pour consulter ses propriétés.</p>
+                </div>
+              </aside>
+            </div>
+          </section>
+
+          <section class="labs-section" id="laboratoires" aria-labelledby="labs-title">
+            <div class="section-heading section-heading-labs">
+              <div>
+                <span class="section-eyebrow">VOTRE ESPACE</span>
+                <h2 id="labs-title">Mes laboratoires <span class="heading-count" id="heading-lab-count">0</span></h2>
+              </div>
+              <button class="text-button" type="button" data-open-create>＋ Nouveau laboratoire</button>
+            </div>
+            <div class="lab-list" id="lab-list" aria-live="polite"></div>
+            <div class="empty-labs" id="empty-labs">
+              <div class="empty-lab-copy">
+                <h3>Votre espace de travail commence ici</h3>
+                <p>Créez un laboratoire pour concevoir et enregistrer votre première topologie.</p>
+                <button class="button button-secondary" type="button" data-open-create>
+                  <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>
+                  Créer un laboratoire
+                </button>
+              </div>
+            </div>
+          </section>
+
+
+        </main>
+      </div>
+    </div>
+
+    <nav class="mobile-nav" aria-label="Navigation mobile">
+      <a class="mobile-nav-link is-active" href="#accueil" aria-current="page">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>
+        <span>Accueil</span>
+      </a>
+      <a class="mobile-nav-link" href="#laboratoires">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3.75h8M9 3.75v6l-4.1 7.1a2.25 2.25 0 0 0 1.95 3.4h10.3a2.25 2.25 0 0 0 1.95-3.4L15 9.75v-6"/><path d="M8 15h8"/></svg>
+        <span>Laboratoires</span>
+      </a>
+      <button class="mobile-nav-link" type="button" data-open-resources aria-haspopup="dialog">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5.75A2.25 2.25 0 0 1 6.75 3.5H20v15H6.75A2.25 2.25 0 0 0 4.5 20.75z"/><path d="M4.5 5.75v15M8.5 7.5h7M8.5 11h7"/></svg>
+        <span>Ressources</span>
+      </button>
+    </nav>
+
+    <dialog class="app-dialog resources-dialog" id="resources-dialog" aria-labelledby="resources-title">
+      <div class="dialog-card">
+        <div class="dialog-heading">
+          <span class="dialog-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5.75A2.25 2.25 0 0 1 6.75 3.5H20v15H6.75A2.25 2.25 0 0 0 4.5 20.75z"/><path d="M4.5 5.75v15"/></svg></span>
+          <button class="dialog-close" type="button" data-close-dialog aria-label="Fermer">×</button>
+        </div>
+        <span class="section-eyebrow">APPRENDRE ET EXPLORER</span>
+        <h2 id="resources-title">Ressources réseau</h2>
+        <p class="dialog-description">Retrouvez les guides pédagogiques et les fiches de référence de PocketNet.</p>
+        <section class="resources-grid">
+            <div class="resource-section" id="tutoriels" aria-labelledby="tutorials-title">
+              <div class="section-heading resource-heading">
+                <div>
+                  <span class="section-eyebrow">APPRENDRE</span>
+                  <h2 id="tutorials-title">Tutoriels réseau</h2>
+                </div>
+                <span class="resource-counter">3 GUIDES</span>
+              </div>
+              <div class="tutorial-list">
+                <button class="tutorial-card" type="button" data-guide="osi">
+                  <span class="tutorial-index">01</span>
+                  <span class="tutorial-copy"><strong>Comprendre le modèle OSI</strong><small>Les 7 couches de communication</small></span>
+                  <svg class="action-arrow" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12m-5-5 5 5-5 5"/></svg>
+                </button>
+                <button class="tutorial-card" type="button" data-guide="ip">
+                  <span class="tutorial-index">02</span>
+                  <span class="tutorial-copy"><strong>Les bases de l’adressage IP</strong><small>Adresse, réseau et hôte</small></span>
+                  <svg class="action-arrow" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12m-5-5 5 5-5 5"/></svg>
+                </button>
+                <button class="tutorial-card" type="button" data-guide="topology">
+                  <span class="tutorial-index">03</span>
+                  <span class="tutorial-copy"><strong>Lire une topologie réseau</strong><small>Équipements et liaisons</small></span>
+                  <svg class="action-arrow" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12m-5-5 5 5-5 5"/></svg>
+                </button>
+              </div>
+              <p class="resource-note">Guides de référence introductifs, disponibles directement dans PocketNet.</p>
+            </div>
+
+            <div class="resource-section" id="equipements" aria-labelledby="equipment-title">
+              <div class="section-heading resource-heading">
+                <div>
+                  <span class="section-eyebrow">RÉFÉRENCE</span>
+                  <h2 id="equipment-title">Bibliothèque des équipements</h2>
+                </div>
+                <span class="resource-counter">4 ÉLÉMENTS</span>
+              </div>
+              <div class="equipment-grid">
+                <article class="equipment-card">
+                  <span class="equipment-symbol equipment-symbol-blue"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="8" width="16" height="9" rx="2"/><path d="M8 12.5h.01M12 12.5h.01M16 12.5h.01M9 5l3-2 3 2"/></svg></span>
+                  <span><strong>Routeur</strong><small>Interconnexion de réseaux</small></span>
+                </article>
+                <article class="equipment-card">
+                  <span class="equipment-symbol equipment-symbol-teal"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="7" width="17" height="10" rx="2"/><path d="M7 12h.01M10.5 12h.01M14 12h.01M17.5 12h.01"/></svg></span>
+                  <span><strong>Commutateur</strong><small>Connexion des équipements</small></span>
+                </article>
+                <article class="equipment-card">
+                  <span class="equipment-symbol equipment-symbol-mint"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M10 17h4"/></svg></span>
+                  <span><strong>Ordinateur</strong><small>Hôte d’un réseau local</small></span>
+                </article>
+                <article class="equipment-card">
+                  <span class="equipment-symbol equipment-symbol-slate"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="12" rx="2"/><path d="M8 20h8m-4-3v3"/></svg></span>
+                  <span><strong>Serveur</strong><small>Ressource sur le réseau</small></span>
+                </article>
+              </div>
+              <p class="resource-note">Fiches de référence uniquement. Les équipements ne sont pas encore simulés.</p>
+            </div>
+          </section>
+      </div>
+    </dialog>
+
+    <dialog class="app-dialog" id="create-dialog" aria-labelledby="create-title">
+      <form class="dialog-card" id="create-form">
+        <div class="dialog-heading">
+          <span class="dialog-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span>
+          <button class="dialog-close" type="button" data-close-dialog aria-label="Fermer">×</button>
+        </div>
+        <span class="section-eyebrow">NOUVEAU PROJET</span>
+        <h2 id="create-title">Créer un laboratoire</h2>
+        <p class="dialog-description">Donnez un nom à votre espace de travail. Le laboratoire sera enregistré dans ce navigateur, sur cet appareil.</p>
+        <label class="field-label" for="lab-name">Nom du laboratoire</label>
+        <input class="text-field" id="lab-name" name="name" type="text" maxlength="60" placeholder="Ex. Réseau du bureau" required autocomplete="off">
+        <p class="dialog-error" id="create-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button class="button button-quiet" type="button" data-close-dialog>Annuler</button>
+          <button class="button button-primary" type="submit">Créer le laboratoire</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="app-dialog" id="settings-dialog" aria-labelledby="settings-title">
+      <div class="dialog-card">
+        <div class="dialog-heading">
+          <span class="dialog-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m19.4 15 .05.05a1.75 1.75 0 1 1-2.48 2.48l-.05-.05a1.75 1.75 0 0 0-2.98 1.24v.15a1.75 1.75 0 0 1-3.5 0v-.08a1.75 1.75 0 0 0-2.98-1.24l-.05.05a1.75 1.75 0 1 1-2.48-2.48l.05-.05a1.75 1.75 0 0 0-1.24-2.98H3.6a1.75 1.75 0 0 1 0-3.5h.08a1.75 1.75 0 0 0 1.24-2.98l-.05-.05a1.75 1.75 0 1 1 2.48-2.48l.05.05a1.75 1.75 0 0 0 2.98-1.24V1.6a1.75 1.75 0 0 1 3.5 0v.08a1.75 1.75 0 0 0 2.98 1.24l.05-.05a1.75 1.75 0 1 1 2.48 2.48l-.05.05a1.75 1.75 0 0 0 1.24 2.98h.15a1.75 1.75 0 0 1 0 3.5h-.08A1.75 1.75 0 0 0 19.4 15Z"/></svg></span>
+          <button class="dialog-close" type="button" data-close-dialog aria-label="Fermer">×</button>
+        </div>
+        <span class="section-eyebrow">VOTRE ESPACE</span>
+        <h2 id="settings-title">Paramètres</h2>
+        <p class="dialog-description">PocketNet fonctionne localement dans ce navigateur. Aucun compte n’est nécessaire.</p>
+        <div class="setting-row"><span><strong>Enregistrement</strong><small>Stockage local de ce navigateur</small></span><span class="setting-value">LOCAL</span></div>
+        <div class="setting-row"><span><strong>Synchronisation</strong><small>Les données ne sont pas envoyées à un serveur</small></span><span class="setting-value setting-muted">INACTIVE</span></div>
+        <button class="button button-danger" id="clear-labs" type="button">Supprimer mes laboratoires</button>
+      </div>
+    </dialog>
+
+    <dialog class="app-dialog" id="guide-dialog" aria-labelledby="guide-title">
+      <div class="dialog-card">
+        <div class="dialog-heading">
+          <span class="dialog-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5.75A2.25 2.25 0 0 1 6.75 3.5H20v15H6.75A2.25 2.25 0 0 0 4.5 20.75z"/><path d="M4.5 5.75v15"/></svg></span>
+          <button class="dialog-close" type="button" data-close-dialog aria-label="Fermer">×</button>
+        </div>
+        <span class="section-eyebrow" id="guide-category">GUIDE RÉSEAU</span>
+        <h2 id="guide-title"></h2>
+        <p class="dialog-description" id="guide-description"></p>
+        <div class="guide-content" id="guide-content"></div>
+        <p class="guide-footnote">Contenu de référence pédagogique. Aucune simulation réseau n’est exécutée.</p>
+        <div class="dialog-actions"><button class="button button-primary" type="button" data-close-dialog>Terminé</button></div>
+      </div>
+    </dialog>
+
+    <dialog class="app-dialog pwa-ios-dialog" id="pwa-ios-dialog" aria-labelledby="pwa-ios-title">
+      <div class="dialog-card">
+        <div class="dialog-heading">
+          <span class="dialog-icon"><img src="{% static 'brand/pocketnet-icon.svg' %}" alt="" width="24" height="24"></span>
+          <button class="dialog-close" type="button" data-close-pwa-ios aria-label="Fermer">×</button>
+        </div>
+        <span class="section-eyebrow">INSTALLATION SUR APPLE</span>
+        <h2 id="pwa-ios-title">Ajouter PocketNet à l’écran d’accueil</h2>
+        <p class="dialog-description" id="pwa-ios-browser-hint" hidden>Pour installer PocketNet, ouvrez cette page dans Safari, puis suivez ces étapes :</p>
+        <ol class="pwa-ios-steps">
+          <li>Dans Safari, appuyez sur le bouton <strong>Partager</strong>.</li>
+          <li>Choisissez <strong>Ajouter à l’écran d’accueil</strong>.</li>
+          <li>Confirmez avec <strong>Ajouter</strong>.</li>
+        </ol>
+        <div class="dialog-actions">
+          <button class="button button-primary" type="button" data-close-pwa-ios>Compris</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="app-dialog pc-management-dialog" id="pc-management-dialog" aria-labelledby="pc-management-title">
+      <div class="pc-management-shell">
+        <header class="pc-management-header">
+          <div>
+            <span class="section-eyebrow">ORDINATEUR</span>
+            <h2 id="pc-management-title">PC</h2>
+          </div>
+          <button class="dialog-close" type="button" data-close-computer aria-label="Fermer">×</button>
+        </header>
+        <div class="pc-management-tabs" role="tablist" aria-label="Sections de l’ordinateur">
+          <button class="pc-management-tab is-active" type="button" role="tab" data-pc-tab="desktop" aria-selected="true">Desktop</button>
+          <button class="pc-management-tab" type="button" role="tab" data-pc-tab="ip" aria-selected="false">IP Configuration</button>
+          <button class="pc-management-tab" type="button" role="tab" data-pc-tab="terminal" aria-selected="false">Terminal</button>
+        </div>
+        <section class="pc-management-panel" id="pc-desktop-panel" role="tabpanel" data-pc-panel="desktop"></section>
+        <section class="pc-management-panel" id="pc-ip-panel" role="tabpanel" data-pc-panel="ip" hidden>
+          <p class="pc-panel-description">Configurez l’interface réseau de cet ordinateur.</p>
+          <form class="pc-ip-form" id="pc-ip-form">
+            <div class="pc-ip-grid">
+              <label class="editor-field">Adresse IPv4
+                <input name="ipv4Address" type="text" inputmode="decimal" autocomplete="off" spellcheck="false">
+              </label>
+              <label class="editor-field">Masque de sous-réseau
+                <input name="subnetMask" type="text" inputmode="decimal" value="255.255.255.0" autocomplete="off" spellcheck="false">
+              </label>
+              <label class="editor-field">Passerelle par défaut
+                <input name="defaultGateway" type="text" inputmode="decimal" autocomplete="off" spellcheck="false">
+              </label>
+              <label class="editor-field">Serveur DNS
+                <input name="dnsServer" type="text" inputmode="decimal" autocomplete="off" spellcheck="false">
+              </label>
+            </div>
+            <label class="editor-checkbox pc-option">
+              <input name="dhcpEnabled" type="checkbox">
+              Obtenir une adresse automatiquement (DHCP)
+            </label>
+            <label class="editor-checkbox pc-option">
+              <input name="icmpEnabled" type="checkbox" checked>
+              Autoriser les requêtes ICMP Echo
+            </label>
+            <p class="pc-config-message" id="pc-config-message" role="status">Le DHCP est prévu pour une étape ultérieure ; aucun serveur DHCP n’est encore simulé.</p>
+            <button class="button button-primary" type="submit">Enregistrer la configuration</button>
+          </form>
+        </section>
+        <section class="pc-management-panel" id="pc-terminal-panel" role="tabpanel" data-pc-panel="terminal" hidden>
+          <p class="pc-panel-description">Les commandes réseau sont exécutées par le moteur de simulation PocketNet.</p>
+          <div class="pc-terminal-window">
+            <pre class="pc-terminal-output" id="pc-terminal-output" role="log" aria-live="polite"></pre>
+            <form class="pc-terminal-form" id="pc-terminal-form">
+              <label id="pc-terminal-prompt" for="pc-terminal-command">PC C:\&gt;</label>
+              <input id="pc-terminal-command" name="command" type="text" autocomplete="off" spellcheck="false" aria-label="Commande réseau">
+              <button type="submit">Exécuter</button>
+            </form>
+              <div class="pc-terminal-status">
+                <span id="pc-terminal-status" role="status">Prêt.</span>
+                <span>Ctrl+C pour interrompre</span>
+              </div>
+          </div>
+          <p class="pc-terminal-help">Historique : ↑ / ↓ · Copier/coller et sélection du texte disponibles.</p>
+        </section>
+      </div>
+    </dialog>
+
+    <dialog class="app-dialog switch-management-dialog" id="switch-management-dialog" aria-labelledby="switch-management-title">
+      <div class="pc-management-shell">
+        <header class="pc-management-header">
+          <div>
+            <span class="section-eyebrow">COMMUTATEUR ETHERNET</span>
+            <h2 id="switch-management-title">Switch</h2>
+          </div>
+          <button class="dialog-close" type="button" data-close-switch aria-label="Fermer">×</button>
+        </header>
+        <p class="pc-panel-description">Console de configuration IOS pédagogique. Les commandes prises en charge modifient le moteur Layer 2 et sont enregistrées avec le laboratoire.</p>
+        <div class="pc-terminal-window switch-terminal-window">
+          <pre class="pc-terminal-output" id="switch-terminal-output" role="log" aria-live="polite"></pre>
+          <form class="pc-terminal-form" id="switch-terminal-form">
+            <label id="switch-terminal-prompt" for="switch-terminal-command">Switch&gt;</label>
+            <input id="switch-terminal-command" name="command" type="text" autocomplete="off" spellcheck="false" aria-label="Commande du commutateur">
+            <button type="submit">Exécuter</button>
+          </form>
+          <div class="pc-terminal-status">
+            <span id="switch-terminal-status" role="status">Mode utilisateur.</span>
+            <span>↑ / ↓ historique · Tab complétion</span>
+          </div>
+        </div>
+        <p class="pc-terminal-help">VLAN, accès/trunk 802.1Q, ports, table MAC, configuration running/startup et sauvegarde sont simulés. STP et les fonctions non implémentées signalent explicitement leur indisponibilité.</p>
+      </div>
+    </dialog>
+
+    <div class="toast" id="app-toast" role="status" aria-live="polite" hidden></div>
+    <script src="{% static 'app.js' %}?v=pwa-1" type="module"></script>
+  </body>
+</html>

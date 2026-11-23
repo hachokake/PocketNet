@@ -1,0 +1,58 @@
+import { type SwitchPersistentConfiguration } from "../protocols/ethernet/SwitchConfiguration.js";
+import type { EthernetSwitch } from "../protocols/ethernet/EthernetSwitch.js";
+export type SwitchTerminalMode = "user" | "privileged" | "global" | "interface" | "vlan" | "line";
+export interface SwitchTerminalResult {
+    readonly output: string;
+    readonly tone: "normal" | "error" | "info";
+}
+export interface SwitchTerminalOptions {
+    readonly onConfigurationChange: (configuration: SwitchPersistentConfiguration) => void;
+}
+export declare class SwitchTerminal {
+    private readonly networkSwitch;
+    private readonly options;
+    mode: SwitchTerminalMode;
+    private selectedPorts;
+    private selectedVlanId;
+    private authenticated;
+    private awaitingPassword;
+    constructor(networkSwitch: EthernetSwitch, options: SwitchTerminalOptions);
+    get prompt(): string;
+    execute(commandLine: string): SwitchTerminalResult;
+    complete(line: string): string;
+    private authenticate;
+    private commandsForMode;
+    private executeUser;
+    private executePrivileged;
+    private executeGlobal;
+    private executeGlobalNo;
+    private executeInterface;
+    private executeInterfaceNo;
+    private configureSwitchport;
+    private executeVlan;
+    private executeLine;
+    private show;
+    private showInterfaces;
+    private showMacTable;
+    private clear;
+    private addStaticMac;
+    private removeStaticMac;
+    private resolvePorts;
+    private updateSelectedPorts;
+    private updateSelectedPortsForEach;
+    private saveStartup;
+    private changeRunning;
+    private renderVlans;
+    private renderPortStatus;
+    private renderTrunks;
+    private renderMacTable;
+    private renderConfiguration;
+    private helpText;
+    private completions;
+    private incomplete;
+    private invalid;
+    private stpUnavailable;
+    private error;
+    private info;
+    private normal;
+}
