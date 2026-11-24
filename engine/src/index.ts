@@ -43,6 +43,7 @@ export type {
   SwitchTerminalMode,
   SwitchTerminalOptions,
   SwitchTerminalResult,
+  SwitchTerminalState,
 } from "./lab/SwitchTerminal.js";
 export type { TerminalOutput, TerminalTone } from "./lab/terminal/types.js";
 export { TopologySimulation } from "./lab/TopologySimulation.js";

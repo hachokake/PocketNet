@@ -1,9 +1,9 @@
-const CACHE_NAME = "pocketnet-shell-v20";
+const CACHE_NAME = "pocketnet-shell-v23";
 const CACHE_PREFIX = "pocketnet-shell-";
 const OFFLINE_URL = "/static/offline.html";
 const APP_SHELL = [
-  "/static/app.css?v=pwa-1",
-  "/static/app.js?v=pwa-1",
+  "/static/app.css?v=pwa-4",
+  "/static/app.js?v=pwa-4",
   "/static/pwa.mjs",
   "/static/topology-editor.js",
   "/static/topology-model.mjs",

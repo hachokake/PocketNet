@@ -21,8 +21,20 @@ export interface SwitchTerminalResult {
   readonly tone: "normal" | "error" | "info";
 }
 
+export interface SwitchTerminalState {
+  readonly mode: SwitchTerminalMode;
+  readonly selectedPorts: readonly string[];
+  readonly selectedVlanId: number | null;
+  readonly authenticated: boolean;
+  readonly awaitingPassword: boolean;
+}
+
 export interface SwitchTerminalOptions {
   readonly onConfigurationChange: (configuration: SwitchPersistentConfiguration) => void;
+}
+
+function isSwitchTerminalMode(value: unknown): value is SwitchTerminalMode {
+  return ["user", "privileged", "global", "interface", "vlan", "line"].includes(String(value));
 }
 
 function resolvePrefix(
@@ -120,6 +132,58 @@ export class SwitchTerminal {
     const matches = candidates.filter((command) => command.startsWith(normalized));
     if (matches.length !== 1) return line;
     return `${matches[0]} `;
+  }
+
+  snapshot(): SwitchTerminalState {
+    return {
+      mode: this.mode,
+      selectedPorts: this.selectedPorts.map((port) => this.networkSwitch.getPortName(port)),
+      selectedVlanId: this.selectedVlanId,
+      authenticated: this.authenticated,
+      awaitingPassword: this.awaitingPassword,
+    };
+  }
+
+  restoreState(state: unknown): void {
+    if (!state || typeof state !== "object" || Array.isArray(state)) {
+      throw new Error("L’état enregistré du terminal est invalide.");
+    }
+
+    const value = state as Record<string, unknown>;
+    const mode = value.mode;
+    const savedPorts = value.selectedPorts;
+    const selectedVlanId = value.selectedVlanId;
+    const portIds = this.networkSwitch.portInterfaceIds;
+    const selectedPorts = Array.isArray(savedPorts)
+      ? savedPorts.map((port) => {
+          if (typeof port !== "string") return undefined;
+          return portIds.find((portId) => this.networkSwitch.getPortName(portId) === port)
+            ?? (portIds.includes(port) ? port : undefined);
+        })
+      : null;
+    const vlanExists = selectedVlanId === null
+      || (typeof selectedVlanId === "number"
+        && Number.isInteger(selectedVlanId)
+        && this.networkSwitch.runningConfiguration.vlans.some((vlan) => vlan.id === selectedVlanId));
+    if (
+      !isSwitchTerminalMode(mode)
+      || !Array.isArray(selectedPorts)
+      || !selectedPorts.every((port): port is InterfaceId => typeof port === "string")
+      || !vlanExists
+      || typeof value.authenticated !== "boolean"
+      || typeof value.awaitingPassword !== "boolean"
+      || (mode === "interface" && selectedPorts.length === 0)
+      || (mode === "vlan" && (selectedVlanId === null || selectedVlanId === undefined))
+      || (value.awaitingPassword && (mode !== "user" || value.authenticated))
+    ) {
+      throw new Error("L’état enregistré du terminal ne correspond plus à la configuration du commutateur.");
+    }
+
+    this.mode = mode;
+    this.selectedPorts = selectedPorts;
+    this.selectedVlanId = selectedVlanId as number | null;
+    this.authenticated = value.authenticated;
+    this.awaitingPassword = value.awaitingPassword;
   }
 
   private authenticate(password: string): SwitchTerminalResult {

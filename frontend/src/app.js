@@ -4,6 +4,8 @@ import { createEmptyTopology } from "./topology-model.mjs";
 import { TopologyEditor } from "./topology-editor.js";
 
 const STORAGE_KEY = "pocketnet.laboratories.v1";
+const TERMINAL_STATE_KEY = "pocketnet.terminal-sessions.v1";
+const TERMINAL_STATE_SAVE_DELAY_MS = 100;
 const menuButton = document.querySelector(".menu-toggle");
 const sidebar = document.querySelector(".sidebar");
 const labList = document.querySelector("#lab-list");
@@ -38,6 +40,8 @@ const switchTerminalForm = document.querySelector("#switch-terminal-form");
 const switchTerminalInput = document.querySelector("#switch-terminal-command");
 const switchTerminalPrompt = document.querySelector("#switch-terminal-prompt");
 const switchTerminalStatus = document.querySelector("#switch-terminal-status");
+const simulationEventList = document.querySelector("#simulation-events");
+const simulationEventCount = document.querySelector("#simulation-event-count");
 const guides = {
   osi: {
     title: "Comprendre le modèle OSI",
@@ -81,10 +85,16 @@ let switchTerminalHistory = [];
 let switchTerminalHistoryIndex = 0;
 let activeTopologySimulation;
 let activeTopologySignature = null;
+let terminalSessionStates = {};
+let terminalStateSaveTimeout;
+let terminalStateStorageFailed = false;
 let terminalLines = [];
 let terminalHistory = [];
 let terminalHistoryIndex = 0;
 let terminalCommandController = null;
+let switchTerminalLines = [];
+let renderedSimulationEventCount = 0;
+let lastRenderedSimulationEventId = null;
 
 function showToast(message) {
   window.clearTimeout(toastTimeout);
@@ -137,6 +147,105 @@ function persistLaboratories(nextLaboratories) {
   }
 }
 
+function readTerminalSessionStates() {
+  try {
+    const stored = window.localStorage.getItem(TERMINAL_STATE_KEY);
+    if (stored === null) return {};
+
+    const parsed = JSON.parse(stored);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Le format enregistré n’est pas valide.");
+    }
+    return parsed;
+  } catch (error) {
+    showToast(`Impossible de restaurer les terminaux : ${error.message}`);
+    return {};
+  }
+}
+
+function persistTerminalSessionStates() {
+  window.clearTimeout(terminalStateSaveTimeout);
+  terminalStateSaveTimeout = null;
+  try {
+    window.localStorage.setItem(TERMINAL_STATE_KEY, JSON.stringify(terminalSessionStates));
+    terminalStateStorageFailed = false;
+  } catch (error) {
+    if (!terminalStateStorageFailed) {
+      showToast(`Impossible d’enregistrer l’état des terminaux : ${error.message}`);
+    }
+    terminalStateStorageFailed = true;
+  }
+}
+
+function scheduleTerminalSessionSave() {
+  window.clearTimeout(terminalStateSaveTimeout);
+  terminalStateSaveTimeout = window.setTimeout(
+    persistTerminalSessionStates,
+    TERMINAL_STATE_SAVE_DELAY_MS,
+  );
+}
+
+function getTerminalSessionState(deviceId) {
+  const laboratoryState = terminalSessionStates[activeLaboratoryId];
+  const state = laboratoryState?.[deviceId];
+  return state && typeof state === "object" && !Array.isArray(state) ? state : null;
+}
+
+function saveTerminalSessionState(deviceId, state) {
+  if (!activeLaboratoryId || !deviceId) return;
+  const laboratoryState = terminalSessionStates[activeLaboratoryId];
+  terminalSessionStates = {
+    ...terminalSessionStates,
+    [activeLaboratoryId]: {
+      ...(laboratoryState && typeof laboratoryState === "object" ? laboratoryState : {}),
+      [deviceId]: state,
+    },
+  };
+  scheduleTerminalSessionSave();
+}
+
+function restoreTerminalLines(state) {
+  if (!Array.isArray(state?.lines)) return [];
+  return state.lines
+    .filter((line) => line && typeof line.text === "string")
+    .map((line) => ({
+      text: line.text,
+      tone: ["command", "error", "info", "normal", "success"].includes(line.tone) ? line.tone : "normal",
+    }));
+}
+
+function restoreTerminalHistory(state) {
+  return Array.isArray(state?.history)
+    ? state.history.filter((command) => typeof command === "string")
+    : [];
+}
+
+function restoreTerminalHistoryIndex(state, history) {
+  return Number.isInteger(state?.historyIndex)
+    ? Math.max(0, Math.min(state.historyIndex, history.length))
+    : history.length;
+}
+
+function restoreTerminalInput(input, state) {
+  input.value = typeof state?.inputValue === "string" ? state.inputValue : "";
+  const start = Number.isInteger(state?.selectionStart)
+    ? Math.max(0, Math.min(state.selectionStart, input.value.length))
+    : input.value.length;
+  const end = Number.isInteger(state?.selectionEnd)
+    ? Math.max(start, Math.min(state.selectionEnd, input.value.length))
+    : start;
+  input.setSelectionRange(start, end, state?.selectionDirection === "backward" ? "backward" : "forward");
+}
+
+function captureTerminalInput(input) {
+  return {
+    inputValue: input.value,
+    selectionStart: input.selectionStart ?? input.value.length,
+    selectionEnd: input.selectionEnd ?? input.value.length,
+    selectionDirection: input.selectionDirection ?? "none",
+  };
+}
+
 function getTopologySimulationSignature(topology) {
   return JSON.stringify({
     devices: topology.devices.map(({
@@ -144,6 +253,80 @@ function getTopologySimulationSignature(topology) {
     }) => ({ id, name, kind, interfaces, defaultGateway, dnsServer, dhcpEnabled, icmpEnabled, initialTtl, staticRoutes })),
     connections: topology.connections,
   });
+}
+
+function addSimulationEventsPlaceholder() {
+  const placeholder = document.createElement("li");
+  placeholder.className = "console-placeholder";
+  placeholder.textContent = "Les échanges simulés apparaîtront ici.";
+  simulationEventList.append(placeholder);
+}
+
+function resetSimulationEvents() {
+  simulationEventList.replaceChildren();
+  renderedSimulationEventCount = 0;
+  lastRenderedSimulationEventId = null;
+  simulationEventCount.textContent = "0 événement";
+  addSimulationEventsPlaceholder();
+}
+
+function getSimulationEventLayer(event) {
+  if (event.details.layer) return event.details.layer;
+  if (event.type.startsWith("arp-")) return "ARP";
+  if (event.type.startsWith("icmp-")) return "ICMP";
+  if (event.type.startsWith("ipv4-")) return "IPv4";
+  if (event.type.startsWith("ethernet-frame-") || event.type.startsWith("switch-mac-")) return "L2";
+  return "SIM";
+}
+
+function renderSimulationEvents(events) {
+  const previousLastEvent = events[renderedSimulationEventCount - 1];
+  if (
+    events.length < renderedSimulationEventCount
+    || (renderedSimulationEventCount > 0 && previousLastEvent?.id !== lastRenderedSimulationEventId)
+  ) {
+    resetSimulationEvents();
+  }
+
+  if (events.length === 0) return;
+  const newEvents = events.slice(renderedSimulationEventCount);
+  if (simulationEventList.firstElementChild?.classList.contains("console-placeholder")) {
+    simulationEventList.replaceChildren();
+  }
+  newEvents.forEach((event) => {
+    const item = document.createElement("li");
+    item.className = "console-event";
+    item.dataset.layer = getSimulationEventLayer(event);
+
+    const time = document.createElement("span");
+    time.className = "event-time";
+    const timestamp = new Date(event.timestamp);
+    time.textContent = Number.isNaN(timestamp.getTime())
+      ? "--:--:--"
+      : new Intl.DateTimeFormat("fr-FR", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        }).format(timestamp);
+
+    const label = document.createElement("span");
+    label.className = "event-label";
+    label.textContent = event.type.replaceAll("-", " ").toUpperCase();
+
+    const message = document.createElement("span");
+    message.className = "event-message";
+    message.textContent = event.message;
+
+    item.append(time, label, message);
+    simulationEventList.append(item);
+  });
+  while (simulationEventList.children.length > 100) {
+    simulationEventList.firstElementChild.remove();
+  }
+  renderedSimulationEventCount = events.length;
+  lastRenderedSimulationEventId = events.at(-1)?.id ?? null;
+  simulationEventCount.textContent = `${events.length} événement${events.length === 1 ? "" : "s"}`;
+  simulationEventList.scrollTop = simulationEventList.scrollHeight;
 }
 
 function createLabCard(laboratory) {
@@ -205,6 +388,8 @@ function renderLaboratories() {
 }
 
 function saveTopology(topology) {
+  if (activeComputerId) saveComputerTerminalState();
+  if (activeSwitchId) saveSwitchTerminalState();
   const nextLaboratories = laboratories.map((laboratory) =>
     laboratory.id === activeLaboratoryId
       ? { ...laboratory, topology, updatedAt: new Date().toISOString() }
@@ -218,12 +403,16 @@ function saveTopology(topology) {
     activeTopologySimulation = new TopologySimulation(topology);
     activeTopologySignature = topologySignature;
     switchTerminal = null;
+    renderSimulationEvents(activeTopologySimulation.engine.events);
   }
   renderLaboratories();
   return true;
 }
 
 function closeLaboratoryEditor() {
+  if (activeComputerId) saveComputerTerminalState();
+  if (activeSwitchId) saveSwitchTerminalState();
+  persistTerminalSessionStates();
   activeLaboratoryId = null;
   activeTopologySimulation = null;
   activeTopologySignature = null;
@@ -242,6 +431,8 @@ function openLaboratoryEditor(laboratory) {
     topologyEditor.open(laboratory.topology);
     activeTopologySimulation = new TopologySimulation(topologyEditor.topology);
     activeTopologySignature = getTopologySimulationSignature(topologyEditor.topology);
+    resetSimulationEvents();
+    renderSimulationEvents(activeTopologySimulation.engine.events);
     window.scrollTo({ top: 0, behavior: "smooth" });
   } catch (error) {
     activeLaboratoryId = null;
@@ -412,6 +603,7 @@ function updateNavigation() {
 window.addEventListener("hashchange", updateNavigation);
 
 laboratories = readLaboratories();
+terminalSessionStates = readTerminalSessionStates();
 topologyEditor = new TopologyEditor(labEditorRoot, saveTopology);
 labEditorRoot.addEventListener("editor:close", closeLaboratoryEditor);
 labEditorRoot.addEventListener("computer:open", (event) => {
@@ -477,6 +669,16 @@ function populateComputerIpForm(device) {
   computerIpForm.elements.namedItem("icmpEnabled").checked = device.icmpEnabled !== false;
 }
 
+function saveComputerTerminalState() {
+  if (!activeComputerId) return;
+  saveTerminalSessionState(activeComputerId, {
+    lines: terminalLines,
+    history: terminalHistory,
+    historyIndex: terminalHistoryIndex,
+    ...captureTerminalInput(computerTerminalInput),
+  });
+}
+
 function openComputerManagement(deviceId) {
   const device = topologyEditor.topology.devices.find((item) =>
     item.id === deviceId && item.kind === "pc");
@@ -485,12 +687,14 @@ function openComputerManagement(deviceId) {
   terminalCommandController = null;
   activeComputerId = device.id;
   computerTerminal = null;
-  terminalLines = [];
-  terminalHistory = [];
-  terminalHistoryIndex = 0;
+  const savedState = getTerminalSessionState(device.id);
+  terminalLines = restoreTerminalLines(savedState).slice(-500);
+  terminalHistory = restoreTerminalHistory(savedState);
+  terminalHistoryIndex = restoreTerminalHistoryIndex(savedState, terminalHistory);
+  restoreTerminalInput(computerTerminalInput, savedState);
   computerTerminalPrompt.textContent = `${device.name} C:\\>`;
   computerTitle.textContent = device.name;
-  computerTerminalPanel.textContent = "";
+  renderTerminalOutput();
   computerTerminalStatus.textContent = "Prêt.";
   renderComputerDesktop(device);
   populateComputerIpForm(device);
@@ -533,6 +737,7 @@ computerDialog.querySelectorAll("[data-pc-tab]").forEach((button) => {
 });
 computerDialog.querySelector("[data-close-computer]").addEventListener("click", () => computerDialog.close());
 computerDialog.addEventListener("close", () => {
+  saveComputerTerminalState();
   terminalCommandController?.abort();
   terminalCommandController = null;
   activeComputerId = null;
@@ -540,11 +745,24 @@ computerDialog.addEventListener("close", () => {
   terminalLines = [];
   terminalHistory = [];
   terminalHistoryIndex = 0;
+  computerTerminalInput.value = "";
 });
 
 function getActiveSwitch() {
   return topologyEditor.topology.devices.find((device) =>
     device.id === activeSwitchId && device.kind === "switch");
+}
+
+function saveSwitchTerminalState() {
+  if (!activeSwitchId) return;
+  const savedState = getTerminalSessionState(activeSwitchId);
+  saveTerminalSessionState(activeSwitchId, {
+    lines: switchTerminalLines,
+    history: switchTerminalHistory,
+    historyIndex: switchTerminalHistoryIndex,
+    ...captureTerminalInput(switchTerminalInput),
+    cliState: switchTerminal?.snapshot() ?? savedState?.cliState ?? null,
+  });
 }
 
 function openSwitchManagement(deviceId) {
@@ -553,22 +771,46 @@ function openSwitchManagement(deviceId) {
   if (!device) return;
   activeSwitchId = device.id;
   switchTerminal = null;
-  switchTerminalHistory = [];
-  switchTerminalHistoryIndex = 0;
+  const savedState = getTerminalSessionState(device.id);
+  switchTerminalLines = restoreTerminalLines(savedState);
+  switchTerminalHistory = restoreTerminalHistory(savedState);
+  switchTerminalHistoryIndex = restoreTerminalHistoryIndex(savedState, switchTerminalHistory);
+  restoreTerminalInput(switchTerminalInput, savedState);
   switchTitle.textContent = device.name;
-  switchTerminalOutput.textContent = "";
-  switchTerminalStatus.textContent = "Mode utilisateur.";
-  switchTerminalPrompt.textContent = `${device.switchConfig.running.hostname}>`;
+  renderSwitchTerminalOutput();
+  try {
+    if (savedState?.cliState) ensureSwitchTerminal().restoreState(savedState.cliState);
+    switchTerminalStatus.textContent = `Mode ${switchTerminal?.mode ?? "user"}.`;
+  } catch (error) {
+    appendSwitchTerminalLine(`Impossible de restaurer le mode CLI : ${error.message}`, "error");
+    switchTerminalStatus.textContent = "Mode utilisateur.";
+  }
+  switchTerminalPrompt.textContent = switchTerminal?.prompt ?? `${device.switchConfig.running.hostname}>`;
   switchDialog.showModal();
   switchTerminalInput.focus();
+  restoreTerminalInput(switchTerminalInput, getTerminalSessionState(activeSwitchId));
+}
+
+function renderSwitchTerminalOutput() {
+  const fragment = document.createDocumentFragment();
+  switchTerminalLines.forEach(({ text, tone }) => {
+    const line = document.createElement("span");
+    line.className = `pc-terminal-line is-${tone}`;
+    line.textContent = text;
+    fragment.append(line);
+  });
+  switchTerminalOutput.replaceChildren(fragment);
+  switchTerminalOutput.scrollTop = switchTerminalOutput.scrollHeight;
 }
 
 function appendSwitchTerminalLine(text, tone = "normal") {
+  switchTerminalLines.push({ text, tone });
   const line = document.createElement("span");
   line.className = `pc-terminal-line is-${tone}`;
   line.textContent = text;
   switchTerminalOutput.append(line);
   switchTerminalOutput.scrollTop = switchTerminalOutput.scrollHeight;
+  saveSwitchTerminalState();
 }
 
 function ensureSwitchTerminal() {
@@ -609,6 +851,7 @@ switchTerminalForm.addEventListener("submit", (event) => {
     appendSwitchTerminalLine(`Erreur : ${error instanceof Error ? error.message : "échec inconnu"}`, "error");
     switchTerminalStatus.textContent = "Erreur de commande.";
   }
+  saveSwitchTerminalState();
   switchTerminalInput.focus();
 });
 
@@ -621,6 +864,7 @@ switchTerminalInput.addEventListener("keydown", (event) => {
       switchTerminalInput.value.length,
       switchTerminalInput.value.length,
     );
+    saveSwitchTerminalState();
     return;
   }
   if (event.key === "ArrowUp") {
@@ -628,19 +872,24 @@ switchTerminalInput.addEventListener("keydown", (event) => {
     event.preventDefault();
     switchTerminalHistoryIndex = Math.max(0, switchTerminalHistoryIndex - 1);
     switchTerminalInput.value = switchTerminalHistory[switchTerminalHistoryIndex];
+    saveSwitchTerminalState();
   } else if (event.key === "ArrowDown" && switchTerminalHistoryIndex < switchTerminalHistory.length) {
     event.preventDefault();
     switchTerminalHistoryIndex += 1;
     switchTerminalInput.value = switchTerminalHistory[switchTerminalHistoryIndex] || "";
+    saveSwitchTerminalState();
   }
 });
 
 switchDialog.querySelector("[data-close-switch]").addEventListener("click", () => switchDialog.close());
 switchDialog.addEventListener("close", () => {
+  saveSwitchTerminalState();
   activeSwitchId = null;
   switchTerminal = null;
+  switchTerminalLines = [];
   switchTerminalHistory = [];
   switchTerminalHistoryIndex = 0;
+  switchTerminalInput.value = "";
 });
 
 computerIpForm.addEventListener("submit", (event) => {
@@ -663,8 +912,6 @@ computerIpForm.addEventListener("submit", (event) => {
       populateComputerIpForm(device);
     }
     computerTerminal = null;
-    terminalLines = [];
-    computerTerminalPanel.textContent = "";
     computerConfigMessage.textContent = "Configuration IP enregistrée dans le laboratoire.";
     computerConfigMessage.classList.remove("is-error");
   } catch (error) {
@@ -689,6 +936,7 @@ function appendTerminalLine(text, tone = "normal") {
   terminalLines.push({ text, tone });
   if (terminalLines.length > 500) terminalLines.splice(0, terminalLines.length - 500);
   renderTerminalOutput();
+  saveComputerTerminalState();
 }
 
 computerTerminalInput.addEventListener("keydown", (event) => {
@@ -703,10 +951,12 @@ computerTerminalInput.addEventListener("keydown", (event) => {
     event.preventDefault();
     terminalHistoryIndex = Math.max(0, terminalHistoryIndex - 1);
     computerTerminalInput.value = terminalHistory[terminalHistoryIndex];
+    saveComputerTerminalState();
   } else if (event.key === "ArrowDown" && terminalHistoryIndex < terminalHistory.length) {
     event.preventDefault();
     terminalHistoryIndex += 1;
     computerTerminalInput.value = terminalHistory[terminalHistoryIndex] || "";
+    saveComputerTerminalState();
   }
 });
 
@@ -722,6 +972,7 @@ computerTerminalForm.addEventListener("submit", async (event) => {
   terminalHistoryIndex = terminalHistory.length;
   appendTerminalLine(`${computerTitle.textContent} C:\\> ${command}`, "command");
   computerTerminalInput.value = "";
+  saveComputerTerminalState();
   computerTerminalForm.querySelector("button").disabled = true;
   computerTerminalStatus.textContent = "Commande en cours…";
   computerTerminalInput.focus();
@@ -732,6 +983,7 @@ computerTerminalForm.addEventListener("submit", async (event) => {
       if (output.kind === "clear") {
         terminalLines = [];
         renderTerminalOutput();
+        saveComputerTerminalState();
       } else if (output.kind === "line") {
         appendTerminalLine(output.text, output.tone || "normal");
       } else {
@@ -753,6 +1005,17 @@ computerTerminalForm.addEventListener("submit", async (event) => {
       if (activeComputerId === computerId) computerTerminalInput.focus();
     }
   }
+});
+
+["input", "keyup", "click", "select"].forEach((eventName) => {
+  computerTerminalInput.addEventListener(eventName, saveComputerTerminalState);
+  switchTerminalInput.addEventListener(eventName, saveSwitchTerminalState);
+});
+
+window.addEventListener("pagehide", () => {
+  if (activeComputerId) saveComputerTerminalState();
+  if (activeSwitchId) saveSwitchTerminalState();
+  persistTerminalSessionStates();
 });
 
 initializePwa({

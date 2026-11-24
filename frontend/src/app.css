@@ -462,6 +462,9 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .editor-announcement { min-height: 16px; margin: 9px 0 0; color: #64748B; font-size: var(--text-compact); }
 .editor-announcement.is-error { color: #B23C46; }
 .editor-disclaimer { margin: 5px 0 0; color: var(--text-tertiary); font-size: var(--text-compact); line-height: 1.55; }
+.simulation-events-panel { margin-top: 14px; padding-top: 13px; border-top: 1px solid #E8EDF4; }
+.simulation-events-panel .console-heading { margin-bottom: 7px; }
+.simulation-events-panel .subpanel-heading h3 { margin: 0; color: #293950; font-size: var(--text-body); font-weight: 710; }
 .editor-inspector { min-width: 0; padding: 17px 15px; border-left: 1px solid #E8EDF4; background: #FCFDFE; }
 .editor-inspector h3 { margin: 5px 0 8px; color: #25364E; font-size: var(--text-body); font-weight: 700; }
 .editor-inspector-empty, .editor-link-description { margin: 0; color: var(--secondary); font-size: var(--text-compact); line-height: 1.7; }

@@ -13,7 +13,7 @@
     <link rel="icon" href="{% static 'brand/pocketnet-192.png' %}" sizes="192x192" type="image/png">
     <link rel="apple-touch-icon" href="{% static 'brand/pocketnet-apple-180.png' %}" sizes="180x180">
     <link rel="manifest" href="{% static 'site.webmanifest' %}">
-    <link rel="stylesheet" href="{% static 'app.css' %}?v=pwa-1">
+    <link rel="stylesheet" href="{% static 'app.css' %}?v=pwa-4">
     <title>PocketNet — Votre espace réseau</title>
   </head>
   <body>
@@ -179,6 +179,18 @@
                 </div>
                 <p class="editor-announcement" id="editor-announcement" role="status" aria-live="polite">Ajoutez des équipements. Les connecteurs sur chaque dessin représentent des ports Ethernet distincts.</p>
                 <p class="editor-disclaimer">La topologie et la configuration running/startup des switches sont enregistrées localement. STP n’est pas simulé et reste explicitement indisponible.</p>
+                <section class="simulation-events-panel" aria-labelledby="simulation-events-title">
+                  <div class="subpanel-heading console-heading">
+                    <div>
+                      <span class="section-eyebrow">SIMULATION</span>
+                      <h3 id="simulation-events-title">Événements réseau</h3>
+                    </div>
+                    <output class="console-count" id="simulation-event-count" aria-live="polite">0 événement</output>
+                  </div>
+                  <ol class="event-console" id="simulation-events" role="log" aria-live="polite" aria-relevant="additions">
+                    <li class="console-placeholder">Les échanges simulés apparaîtront ici.</li>
+                  </ol>
+                </section>
               </section>
 
               <aside class="editor-inspector" aria-label="Configuration de l’équipement sélectionné">
@@ -461,6 +473,6 @@
     </dialog>
 
     <div class="toast" id="app-toast" role="status" aria-live="polite" hidden></div>
-    <script src="{% static 'app.js' %}?v=pwa-1" type="module"></script>
+    <script src="{% static 'app.js' %}?v=pwa-4" type="module"></script>
   </body>
 </html>

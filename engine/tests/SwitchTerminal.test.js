@@ -122,6 +122,50 @@ test("supports IOS mode transitions, abbreviations, and explicit unsupported STP
   assert.deepEqual(simulation.getSwitch("sw1").runningConfiguration, before);
 });
 
+test("restores isolated switch terminal modes and their current configuration contexts", () => {
+  const topology = createTopology(true);
+  const simulation = new TopologySimulation(topology);
+  const sw1 = createTerminal(topology, simulation, "sw1");
+  const sw2 = createTerminal(topology, simulation, "sw2");
+
+  run(sw1, "enable");
+  run(sw1, "configure terminal");
+  run(sw1, "interface Fa0/1");
+  run(sw2, "enable");
+  run(sw2, "configure terminal");
+  run(sw2, "vlan 20");
+
+  const resumedSimulation = new TopologySimulation(topology);
+  const resumedSw1 = createTerminal(topology, resumedSimulation, "sw1");
+  const resumedSw2 = createTerminal(topology, resumedSimulation, "sw2");
+  resumedSw1.restoreState(sw1.snapshot());
+  resumedSw2.restoreState(sw2.snapshot());
+
+  assert.equal(resumedSw1.prompt, "Switch1(config-if)#");
+  assert.equal(resumedSw2.prompt, "Switch2(config-vlan)#");
+  assert.notDeepEqual(resumedSw1.snapshot(), resumedSw2.snapshot());
+  run(resumedSw1, "description Uplink");
+  run(resumedSw2, "name Users20");
+  const sw1PortId = resumedSimulation.getSwitch("sw1").portInterfaceIds[0];
+  assert.equal(resumedSimulation.getSwitch("sw1").getPortConfiguration(sw1PortId).description, "Uplink");
+  assert.equal(resumedSimulation.getSwitch("sw2").runningConfiguration.vlans
+    .find((vlan) => vlan.id === 20).name, "Users20");
+});
+
+test("rejects terminal state whose selected interface no longer exists", () => {
+  const topology = createTopology();
+  const simulation = new TopologySimulation(topology);
+  const terminal = createTerminal(topology, simulation);
+
+  assert.throws(() => terminal.restoreState({
+    mode: "interface",
+    selectedPorts: ["removed-port"],
+    selectedVlanId: null,
+    authenticated: false,
+    awaitingPassword: false,
+  }), /ne correspond plus à la configuration/);
+});
+
 test("a new Catalyst 2960 stores its default VLANs and displays default ACCESS ports", () => {
   const topology = createTopology();
   const simulation = new TopologySimulation(topology);

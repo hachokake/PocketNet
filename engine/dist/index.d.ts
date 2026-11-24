@@ -20,7 +20,7 @@ export type { EchoReplyHandler, FrameTransmitter, IcmpControlHandler, IPv4Forwar
 export { ComputerTerminal } from "./lab/ComputerTerminal.js";
 export type { ComputerTerminalOptions } from "./lab/ComputerTerminal.js";
 export { SwitchTerminal } from "./lab/SwitchTerminal.js";
-export type { SwitchTerminalMode, SwitchTerminalOptions, SwitchTerminalResult, } from "./lab/SwitchTerminal.js";
+export type { SwitchTerminalMode, SwitchTerminalOptions, SwitchTerminalResult, SwitchTerminalState, } from "./lab/SwitchTerminal.js";
 export type { TerminalOutput, TerminalTone } from "./lab/terminal/types.js";
 export { TopologySimulation } from "./lab/TopologySimulation.js";
 export type { TopologyConnectionConfiguration, TopologyDeviceConfiguration, TopologyInterfaceConfiguration, TopologyPingResult, TopologySimulationConfiguration, TopologyStaticRouteConfiguration, } from "./lab/TopologySimulation.js";

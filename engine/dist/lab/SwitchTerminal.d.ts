@@ -5,6 +5,13 @@ export interface SwitchTerminalResult {
     readonly output: string;
     readonly tone: "normal" | "error" | "info";
 }
+export interface SwitchTerminalState {
+    readonly mode: SwitchTerminalMode;
+    readonly selectedPorts: readonly string[];
+    readonly selectedVlanId: number | null;
+    readonly authenticated: boolean;
+    readonly awaitingPassword: boolean;
+}
 export interface SwitchTerminalOptions {
     readonly onConfigurationChange: (configuration: SwitchPersistentConfiguration) => void;
 }
@@ -20,6 +27,8 @@ export declare class SwitchTerminal {
     get prompt(): string;
     execute(commandLine: string): SwitchTerminalResult;
     complete(line: string): string;
+    snapshot(): SwitchTerminalState;
+    restoreState(state: unknown): void;
     private authenticate;
     private commandsForMode;
     private executeUser;
