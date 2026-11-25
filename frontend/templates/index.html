@@ -13,7 +13,7 @@
     <link rel="icon" href="{% static 'brand/pocketnet-192.png' %}" sizes="192x192" type="image/png">
     <link rel="apple-touch-icon" href="{% static 'brand/pocketnet-apple-180.png' %}" sizes="180x180">
     <link rel="manifest" href="{% static 'site.webmanifest' %}">
-    <link rel="stylesheet" href="{% static 'app.css' %}?v=pwa-4">
+    <link rel="stylesheet" href="{% static 'app.css' %}?v=pwa-10">
     <title>PocketNet — Votre espace réseau</title>
   </head>
   <body>
@@ -24,21 +24,33 @@
           <img src="{% static 'brand/pocketnet-icon.svg' %}" alt="">
           <span>Pocket<span class="brand-accent">Net</span></span>
         </a>
-        <p class="nav-caption">VOTRE ESPACE</p>
+        <p class="nav-caption">DÉCOUVRIR POCKETNET</p>
         <nav class="primary-nav" aria-label="Navigation principale">
           <a class="nav-link is-active" href="#accueil" aria-current="page">
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>
             <span>Accueil</span>
+          </a>
+          <a class="nav-link" href="#apprendre">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5.75A2.25 2.25 0 0 1 6.75 3.5H20v15H6.75A2.25 2.25 0 0 0 4.5 20.75z"/><path d="M4.5 5.75v15M8.5 7.5h7M8.5 11h7"/></svg>
+            <span>Apprendre</span>
+          </a>
+          <a class="nav-link" href="#fonctionnalites">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M8 7.2 10.8 16M16 7.2 13.2 16M8 6h8"/></svg>
+            <span>Fonctionnalités</span>
+          </a>
+          <a class="nav-link" href="#equipements">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="7" width="17" height="10" rx="2"/><path d="M7 12h.01M10.5 12h.01M14 12h.01M17.5 12h.01"/></svg>
+            <span>Équipements</span>
+          </a>
+          <a class="nav-link" href="#apropos">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></svg>
+            <span>À propos</span>
           </a>
           <a class="nav-link" href="#laboratoires">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3.75h8M9 3.75v6l-4.1 7.1a2.25 2.25 0 0 0 1.95 3.4h10.3a2.25 2.25 0 0 0 1.95-3.4L15 9.75v-6"/><path d="M8 15h8"/></svg>
             <span>Mes laboratoires</span>
             <span class="nav-count" id="lab-count" hidden>0</span>
           </a>
-          <button class="nav-link" type="button" data-open-resources aria-haspopup="dialog">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5.75A2.25 2.25 0 0 1 6.75 3.5H20v15H6.75A2.25 2.25 0 0 0 4.5 20.75z"/><path d="M4.5 5.75v15M8.5 7.5h7M8.5 11h7"/></svg>
-            <span>Ressources</span>
-          </button>
         </nav>
         <div class="sidebar-bottom">
           <div class="profile-mark" aria-hidden="true">P</div>
@@ -101,18 +113,208 @@
               </div>
             </section>
           </div>
-          <section class="welcome-card" aria-labelledby="welcome-title">
-            <div class="welcome-content">
-              <span class="welcome-kicker">VOTRE ESPACE RÉSEAU</span>
-              <h1 id="welcome-title">Votre laboratoire réseau, sans limites.</h1>
-              <p>Concevez des topologies, configurez vos équipements et expérimentez les réseaux informatiques dans un environnement interactif.</p>
-              <div class="welcome-actions">
-                <button class="button button-light" type="button" data-open-create>Créer un laboratoire</button>
-                <a class="button button-hero-secondary" href="#laboratoires">Mes laboratoires</a>
+          <div class="public-home">
+            <section class="public-hero" aria-labelledby="welcome-title">
+              <div class="public-hero-copy">
+                <span class="public-eyebrow"><span aria-hidden="true"></span> APPRENDRE · COMPRENDRE · EXPÉRIMENTER</span>
+                <h1 id="welcome-title">Comprenez les réseaux. Construisez. Configurez. Simulez.</h1>
+                <p>PocketNet est une plateforme d’apprentissage et de simulation des réseaux informatiques. Découvrez les fondamentaux, explorez les équipements et développez vos compétences grâce à un laboratoire virtuel interactif.</p>
+                <div class="public-hero-actions">
+                  <a class="button public-button-light" href="#apprendre">Explorer les ressources</a>
+                  <a class="button public-button-outline" href="#laboratoires">Accéder au laboratoire</a>
+                </div>
+                <p class="public-hero-note">Laboratoires enregistrés localement sur cet appareil.</p>
               </div>
-              <span class="welcome-footnote">Vos projets sont enregistrés localement sur cet appareil.</span>
-            </div>
-          </section>
+              <div class="public-hero-visual">
+                <svg viewBox="0 0 620 390" role="img" aria-labelledby="network-illustration-title network-illustration-description">
+                  <title id="network-illustration-title">Topologie réseau PocketNet</title>
+                  <desc id="network-illustration-description">Un routeur relie deux commutateurs, des ordinateurs et un serveur par des connexions Ethernet.</desc>
+                  <g class="network-links">
+                    <path d="M306 91 190 166M314 91 432 166M174 199 103 279M190 199 216 279M430 199 397 279M447 199 514 279M310 110 310 280"/>
+                    <path d="M306 91 190 166M314 91 432 166" class="network-link-highlight"/>
+                  </g>
+                  <g class="network-node network-router" transform="translate(270 45)">
+                    <rect width="80" height="62" rx="15"/>
+                    <path d="M19 31h42M28 22l-9 9 9 9M52 22l9 9-9 9"/>
+                    <text x="40" y="80">ROUTEUR</text>
+                  </g>
+                  <g class="network-node network-switch" transform="translate(148 153)">
+                    <rect width="88" height="54" rx="12"/>
+                    <path d="M18 27h52M25 20l-7 7 7 7M63 20l7 7-7 7"/>
+                    <text x="44" y="72">SWITCH</text>
+                  </g>
+                  <g class="network-node network-switch" transform="translate(386 153)">
+                    <rect width="88" height="54" rx="12"/>
+                    <path d="M18 27h52M25 20l-7 7 7 7M63 20l7 7-7 7"/>
+                    <text x="44" y="72">SWITCH</text>
+                  </g>
+                  <g class="network-node network-endpoint" transform="translate(72 273)">
+                    <rect width="62" height="48" rx="10"/>
+                    <path d="M15 15h32v21H15zM24 41h14"/>
+                    <text x="31" y="66">PC</text>
+                  </g>
+                  <g class="network-node network-endpoint" transform="translate(185 273)">
+                    <rect width="62" height="48" rx="10"/>
+                    <path d="M15 15h32v21H15zM24 41h14"/>
+                    <text x="31" y="66">PC</text>
+                  </g>
+                  <g class="network-node network-endpoint network-server" transform="translate(279 273)">
+                    <rect width="62" height="48" rx="10"/>
+                    <path d="M18 14h26v9H18zM18 27h26v9H18zM23 18.5h.01M23 31.5h.01"/>
+                    <text x="31" y="66">SERVEUR</text>
+                  </g>
+                  <g class="network-node network-endpoint" transform="translate(366 273)">
+                    <rect width="62" height="48" rx="10"/>
+                    <path d="M15 15h32v21H15zM24 41h14"/>
+                    <text x="31" y="66">PC</text>
+                  </g>
+                  <g class="network-node network-endpoint" transform="translate(483 273)">
+                    <rect width="62" height="48" rx="10"/>
+                    <path d="M15 15h32v21H15zM24 41h14"/>
+                    <text x="31" y="66">PC</text>
+                  </g>
+                  <circle class="network-packet" cx="249" cy="129" r="4"/>
+                  <circle class="network-packet network-packet-delay" cx="368" cy="131" r="3"/>
+                </svg>
+                <span class="network-visual-caption">Une topologie. Des concepts à expérimenter.</span>
+              </div>
+            </section>
+
+            <section class="public-section" id="apprendre" aria-labelledby="learn-title">
+              <div class="public-section-heading">
+                <span class="section-eyebrow">APPRENDRE ET PRATIQUER</span>
+                <h2 id="learn-title">La théorie prend tout son sens quand on la pratique.</h2>
+                <p>Explorez des ressources réseau et mettez vos connaissances à l’épreuve dans un laboratoire interactif.</p>
+              </div>
+              <div class="learning-path-grid">
+                <article class="learning-path-card learning-card-study">
+                  <span class="learning-path-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M4.5 5.75A2.25 2.25 0 0 1 6.75 3.5H20v15H6.75A2.25 2.25 0 0 0 4.5 20.75z"/><path d="M4.5 5.75v15M8.5 7.5h7M8.5 11h7"/></svg>
+                  </span>
+                  <span class="section-eyebrow">ESPACE APPRENDRE</span>
+                  <h3>Développez vos connaissances réseau.</h3>
+                  <p>Découvrez les concepts fondamentaux, comprenez les protocoles et explorez les équipements à votre rythme.</p>
+                  <button class="public-text-link" type="button" data-open-resources>Explorer les ressources <span aria-hidden="true">→</span></button>
+                </article>
+                <article class="learning-path-card learning-card-practice">
+                  <span class="learning-path-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M8 7.2 10.8 16M16 7.2 13.2 16M8 6h8"/></svg>
+                  </span>
+                  <span class="section-eyebrow">ESPACE PRATIQUER</span>
+                  <h3>Passez de la théorie à la pratique.</h3>
+                  <p>Construisez une topologie, reliez les équipements et expérimentez les configurations réellement prises en charge.</p>
+                  <a class="public-text-link" href="#laboratoires">Accéder au laboratoire <span aria-hidden="true">→</span></a>
+                </article>
+              </div>
+              <section class="learning-center-panel" aria-labelledby="learning-catalog-title">
+                <div class="learning-center-heading">
+                  <div>
+                    <span class="section-eyebrow">CENTRE D’APPRENTISSAGE</span>
+                    <h3 id="learning-catalog-title">Explorez les cours et les références réseau.</h3>
+                    <p>Les catégories, cours et compteurs ci-dessous proviennent des ressources publiées.</p>
+                  </div>
+                  <span class="learning-content-badge">CONTENU PUBLIC</span>
+                </div>
+                <form class="learning-filters" id="learning-filters">
+                  <label class="learning-search-field" for="learning-search">
+                    <span>Rechercher un cours, un protocole, un équipement…</span>
+                    <input id="learning-search" name="search" type="search" placeholder="Que souhaitez-vous apprendre aujourd’hui ?" autocomplete="off">
+                  </label>
+                  <label for="learning-category-filter">Catégorie
+                    <select id="learning-category-filter" name="category">
+                      <option value="">Toutes les catégories</option>
+                    </select>
+                  </label>
+                  <label for="learning-level-filter">Niveau
+                    <select id="learning-level-filter" name="level">
+                      <option value="">Tous les niveaux</option>
+                      <option value="beginner">Débutant</option>
+                      <option value="intermediate">Intermédiaire</option>
+                      <option value="advanced">Avancé</option>
+                    </select>
+                  </label>
+                  <button class="learning-reset" type="reset">Effacer les filtres</button>
+                </form>
+                <p class="learning-status" id="learning-status" role="status" aria-live="polite">Chargement des ressources publiques…</p>
+                <div class="learning-page" id="learning-page" aria-live="polite"></div>
+              </section>
+            </section>
+
+            <section class="public-section" id="fonctionnalites" aria-labelledby="features-title">
+              <div class="public-section-heading">
+                <span class="section-eyebrow">LE LABORATOIRE POCKETNET</span>
+                <h2 id="features-title">Des outils concrets pour explorer les réseaux.</h2>
+                <p>Les possibilités affichées reflètent les comportements actuellement simulés.</p>
+              </div>
+              <div class="feature-grid">
+                <article class="feature-card"><span class="feature-number">01</span><h3>Construire une topologie</h3><p>Ajoutez des équipements, déplacez-les et reliez des interfaces Ethernet distinctes.</p></article>
+                <article class="feature-card"><span class="feature-number">02</span><h3>Configurer des switches</h3><p>Expérimentez les VLAN, les ports access et les trunks 802.1Q sur le modèle pédagogique Catalyst 2960.</p></article>
+                <article class="feature-card"><span class="feature-number">03</span><h3>Utiliser le CLI</h3><p>Exécutez les commandes prises en charge sur la console switch et le terminal réseau des PC.</p></article>
+                <article class="feature-card"><span class="feature-number">04</span><h3>Observer les échanges</h3><p>Suivez les événements simulés, notamment ARP, Ethernet, IPv4 et ICMP.</p></article>
+                <article class="feature-card"><span class="feature-number">05</span><h3>Explorer le routage</h3><p>Testez la connectivité IPv4 entre sous-réseaux au travers de routeurs configurés.</p></article>
+                <article class="feature-card"><span class="feature-number">06</span><h3>Retrouver ses projets</h3><p>Les laboratoires sont enregistrés dans le stockage local de ce navigateur, sans synchronisation serveur.</p></article>
+              </div>
+            </section>
+
+            <section class="public-section" id="equipements" aria-labelledby="equipment-title">
+              <div class="public-section-heading public-section-heading-row">
+                <div>
+                  <span class="section-eyebrow">ÉQUIPEMENTS RÉSEAU</span>
+                  <h2 id="equipment-title">Découvrez les rôles et les limites de chaque équipement.</h2>
+                  <p>La présence dans l’éditeur ne signifie pas toujours que le comportement réseau est simulé.</p>
+                </div>
+                <button class="public-text-link" type="button" data-open-resources>Voir les fiches actuelles <span aria-hidden="true">→</span></button>
+              </div>
+              <div class="device-capability-grid" id="learning-equipment-grid" aria-live="polite">
+                <p class="learning-status">Chargement des fiches d’équipements…</p>
+              </div>
+            </section>
+
+            <section class="public-section" aria-labelledby="steps-title">
+              <div class="public-section-heading">
+                <span class="section-eyebrow">COMMENT ÇA MARCHE ?</span>
+                <h2 id="steps-title">Trois étapes pour progresser.</h2>
+              </div>
+              <ol class="learning-steps">
+                <li><span>01</span><div><h3>Apprendre</h3><p>Découvrez les concepts et le vocabulaire des réseaux.</p></div></li>
+                <li><span>02</span><div><h3>Construire</h3><p>Créez un laboratoire et connectez vos équipements.</p></div></li>
+                <li><span>03</span><div><h3>Expérimenter</h3><p>Configurez le réseau et observez les échanges simulés.</p></div></li>
+              </ol>
+            </section>
+
+            <section class="public-section" id="apropos" aria-labelledby="audience-title">
+              <div class="public-section-heading">
+                <span class="section-eyebrow">POUR QUI ?</span>
+                <h2 id="audience-title">Un espace pour apprendre à son rythme.</h2>
+              </div>
+              <div class="audience-grid">
+                <article><h3>Étudiants</h3><p>Pour découvrir les fondamentaux et pratiquer les configurations.</p></article>
+                <article><h3>Débutants</h3><p>Pour comprendre progressivement les réseaux informatiques.</p></article>
+                <article><h3>Techniciens</h3><p>Pour réviser des notions et s’entraîner sur les fonctions disponibles.</p></article>
+                <article><h3>Professionnels</h3><p>Pour explorer des concepts et tester des scénarios dans un environnement pédagogique.</p></article>
+              </div>
+              <p class="learning-disclaimer">PocketNet est un outil pédagogique ; il ne remplace ni une formation certifiante ni des équipements réseau réels.</p>
+            </section>
+
+            <section class="public-cta" aria-labelledby="cta-title">
+              <span class="section-eyebrow">À VOUS DE JOUER</span>
+              <h2 id="cta-title">Votre apprentissage des réseaux commence ici.</h2>
+              <p>Explorez les ressources disponibles, puis passez à la pratique dans votre laboratoire.</p>
+              <div class="public-hero-actions">
+                <button class="button public-button-light" type="button" data-open-resources>Explorer les ressources</button>
+                <a class="button public-button-outline" href="#laboratoires">Commencer à pratiquer</a>
+              </div>
+            </section>
+
+            <footer class="public-footer">
+              <a class="footer-brand" href="#accueil"><img src="{% static 'brand/pocketnet-icon.svg' %}" alt="">PocketNet</a>
+              <p>Apprendre, comprendre et expérimenter les réseaux informatiques.</p>
+              <nav aria-label="Liens de pied de page">
+                <a href="#accueil">Accueil</a><a href="#apprendre">Apprendre</a><a href="#equipements">Équipements</a><a href="#laboratoires">Laboratoire</a>
+              </nav>
+              <small>© {% now "Y" %} PocketNet</small>
+            </footer>
+          </div>
 
           <section class="topology-editor" id="lab-editor" aria-labelledby="editor-title" hidden>
             <header class="editor-heading">
@@ -234,14 +436,14 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>
         <span>Accueil</span>
       </a>
+      <a class="mobile-nav-link" href="#apprendre">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5.75A2.25 2.25 0 0 1 6.75 3.5H20v15H6.75A2.25 2.25 0 0 0 4.5 20.75z"/><path d="M4.5 5.75v15M8.5 7.5h7M8.5 11h7"/></svg>
+        <span>Apprendre</span>
+      </a>
       <a class="mobile-nav-link" href="#laboratoires">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3.75h8M9 3.75v6l-4.1 7.1a2.25 2.25 0 0 0 1.95 3.4h10.3a2.25 2.25 0 0 0 1.95-3.4L15 9.75v-6"/><path d="M8 15h8"/></svg>
         <span>Laboratoires</span>
       </a>
-      <button class="mobile-nav-link" type="button" data-open-resources aria-haspopup="dialog">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5.75A2.25 2.25 0 0 1 6.75 3.5H20v15H6.75A2.25 2.25 0 0 0 4.5 20.75z"/><path d="M4.5 5.75v15M8.5 7.5h7M8.5 11h7"/></svg>
-        <span>Ressources</span>
-      </button>
     </nav>
 
     <dialog class="app-dialog resources-dialog" id="resources-dialog" aria-labelledby="resources-title">
@@ -282,11 +484,11 @@
               <p class="resource-note">Guides de référence introductifs, disponibles directement dans PocketNet.</p>
             </div>
 
-            <div class="resource-section" id="equipements" aria-labelledby="equipment-title">
+            <div class="resource-section" id="resource-equipement-reference" aria-labelledby="resource-equipment-title">
               <div class="section-heading resource-heading">
                 <div>
                   <span class="section-eyebrow">RÉFÉRENCE</span>
-                  <h2 id="equipment-title">Bibliothèque des équipements</h2>
+                  <h2 id="resource-equipment-title">Bibliothèque des équipements</h2>
                 </div>
                 <span class="resource-counter">4 ÉLÉMENTS</span>
               </div>
@@ -473,6 +675,7 @@
     </dialog>
 
     <div class="toast" id="app-toast" role="status" aria-live="polite" hidden></div>
-    <script src="{% static 'app.js' %}?v=pwa-4" type="module"></script>
+    <script src="{% static 'app.js' %}?v=pwa-9" type="module"></script>
+    <script src="{% static 'learning-center.mjs' %}?v=learning-2" type="module"></script>
   </body>
 </html>

@@ -1,9 +1,10 @@
-const CACHE_NAME = "pocketnet-shell-v23";
+const CACHE_NAME = "pocketnet-shell-v29";
 const CACHE_PREFIX = "pocketnet-shell-";
 const OFFLINE_URL = "/static/offline.html";
 const APP_SHELL = [
-  "/static/app.css?v=pwa-4",
-  "/static/app.js?v=pwa-4",
+  "/static/app.css?v=pwa-10",
+  "/static/app.js?v=pwa-9",
+  "/static/learning-center.mjs?v=learning-2",
   "/static/pwa.mjs",
   "/static/topology-editor.js",
   "/static/topology-model.mjs",
@@ -45,7 +46,9 @@ const APP_SHELL = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)),
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(
+      APP_SHELL.map((path) => new Request(new URL(path, self.location.origin), { cache: "reload" })),
+    )),
   );
 });
 
@@ -86,7 +89,7 @@ self.addEventListener("fetch", (event) => {
 
   if (url.pathname.startsWith("/static/")) {
     event.respondWith(
-      fetch(request).then(async (response) => {
+      fetch(request, { cache: "no-cache" }).then(async (response) => {
         if (response.ok && response.type === "basic") {
           const cache = await caches.open(CACHE_NAME);
           await cache.put(request, response.clone());

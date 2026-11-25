@@ -5,19 +5,28 @@ export class EthernetSwitch {
     topology;
     events;
     now;
-    macAgingTimeMs;
+    macAgingTimeMsOverride;
     macTable = new Map();
+    interfaceCounters = new Map();
     running;
     startup;
     switchPortIds;
     switchModel;
-    constructor(name, portInterfaceIds, topology, events, configuration, now = Date.now, macAgingTimeMs = 300_000) {
+    constructor(name, portInterfaceIds, topology, events, configuration, now = Date.now, macAgingTimeMsOverride) {
         this.name = name;
         this.topology = topology;
         this.events = events;
         this.now = now;
-        this.macAgingTimeMs = macAgingTimeMs;
+        this.macAgingTimeMsOverride = macAgingTimeMsOverride;
         this.switchPortIds = new Set(portInterfaceIds);
+        for (const portInterfaceId of this.switchPortIds) {
+            this.interfaceCounters.set(portInterfaceId, {
+                inputPackets: 0,
+                outputPackets: 0,
+                inputErrors: 0,
+                outputErrors: 0,
+            });
+        }
         const normalized = normalizeSwitchConfiguration(configuration, name, portInterfaceIds);
         this.switchModel = normalized.model;
         this.running = normalized.running;
@@ -50,6 +59,17 @@ export class EthernetSwitch {
     getPortConfiguration(portInterfaceId) {
         this.assertPort(portInterfaceId);
         return this.running.ports[portInterfaceId] ?? defaultSwitchPortConfiguration();
+    }
+    getPortMacAddress(portInterfaceId) {
+        this.assertPort(portInterfaceId);
+        return this.topology.getInterface(portInterfaceId)?.macAddress;
+    }
+    getPortCounters(portInterfaceId) {
+        this.assertPort(portInterfaceId);
+        const counters = this.interfaceCounters.get(portInterfaceId);
+        if (!counters)
+            throw new Error(`Les compteurs du port ${portInterfaceId} sont introuvables.`);
+        return { ...counters };
     }
     isPortOperational(portInterfaceId) {
         return this.getPortConfiguration(portInterfaceId).enabled
@@ -88,16 +108,25 @@ export class EthernetSwitch {
             lastUpdated: this.now(),
         });
     }
-    clearDynamicMacAddresses(vlanId) {
+    clearDynamicMacAddresses(vlanId, portInterfaceId) {
+        if (portInterfaceId !== undefined)
+            this.assertPort(portInterfaceId);
         this.expireMacEntries();
         let removed = 0;
         for (const [key, entry] of this.macTable) {
-            if (entry.type === "dynamic" && (vlanId === undefined || entry.vlanId === vlanId)) {
+            if (entry.type === "dynamic"
+                && (vlanId === undefined || entry.vlanId === vlanId)
+                && (portInterfaceId === undefined || entry.portInterfaceId === portInterfaceId)) {
                 this.macTable.delete(key);
                 removed += 1;
             }
         }
-        this.events.recordEvent("switch-mac-table-cleared", `${removed} entrée(s) MAC dynamique(s) supprimée(s)${vlanId === undefined ? "" : ` du VLAN ${vlanId}`}.`, { layer: "L2", vlanId: vlanId === undefined ? "" : String(vlanId), count: String(removed) });
+        this.events.recordEvent("switch-mac-table-cleared", `${removed} entrée(s) MAC dynamique(s) supprimée(s)${vlanId === undefined ? "" : ` du VLAN ${vlanId}`}${portInterfaceId === undefined ? "" : ` sur ${this.portName(portInterfaceId)}`}.`, {
+            layer: "L2",
+            vlanId: vlanId === undefined ? "" : String(vlanId),
+            portInterfaceId: portInterfaceId ?? "",
+            count: String(removed),
+        });
         return removed;
     }
     removeVlanMacEntries(vlanId) {
@@ -108,6 +137,7 @@ export class EthernetSwitch {
     }
     receive(ingressPortId, frame) {
         this.assertPort(ingressPortId);
+        this.incrementCounter(ingressPortId, "inputPackets");
         this.expireMacEntries();
         const ingressConfiguration = this.getPortConfiguration(ingressPortId);
         const sourceMac = normalizeMacAddress(frame.sourceMac);
@@ -164,6 +194,7 @@ export class EthernetSwitch {
     }
     learnSource(macAddress, portInterfaceId, vlanId) {
         if (isMulticastMacAddress(macAddress)) {
+            this.incrementCounter(portInterfaceId, "inputErrors");
             this.events.recordEvent("ethernet-frame-dropped", `Adresse MAC source multicast invalide : ${macAddress} sur ${this.portName(portInterfaceId)}.`, { layer: "L2", sourceMac: macAddress, ingressPortId: portInterfaceId, vlanId: String(vlanId) });
             return false;
         }
@@ -171,6 +202,7 @@ export class EthernetSwitch {
         const previous = this.macTable.get(key);
         if (previous?.type === "static") {
             if (previous.portInterfaceId !== portInterfaceId) {
+                this.incrementCounter(portInterfaceId, "inputErrors");
                 this.events.recordEvent("ethernet-frame-dropped", `L’adresse MAC ${macAddress} est statique sur ${this.portName(previous.portInterfaceId)} dans le VLAN ${vlanId}.`, { layer: "L2", macAddress, ingressPortId: portInterfaceId, vlanId: String(vlanId) });
                 return false;
             }
@@ -219,6 +251,7 @@ export class EthernetSwitch {
                 return null;
             preparedFrame = this.withVlan(frame, vlanId === port.nativeVlan ? undefined : vlanId);
         }
+        this.incrementCounter(portInterfaceId, "outputPackets");
         return { portInterfaceId, frame: preparedFrame };
     }
     withVlan(frame, vlanId) {
@@ -230,9 +263,13 @@ export class EthernetSwitch {
         return this.macTable.get(this.macKey(vlanId, macAddress));
     }
     expireMacEntries() {
+        const agingTimeMs = this.macAgingTimeMsOverride
+            ?? this.running.macAgingTimeSeconds * 1000;
+        if (agingTimeMs === 0)
+            return;
         const now = this.now();
         for (const [key, entry] of this.macTable) {
-            if (entry.type === "dynamic" && now - entry.lastUpdated >= this.macAgingTimeMs) {
+            if (entry.type === "dynamic" && now - entry.lastUpdated >= agingTimeMs) {
                 this.macTable.delete(key);
             }
         }
@@ -262,6 +299,12 @@ export class EthernetSwitch {
             throw new Error(`Le VLAN ${vlanId} n’existe pas.`);
         }
     }
+    incrementCounter(portInterfaceId, counter) {
+        const counters = this.interfaceCounters.get(portInterfaceId);
+        if (!counters)
+            throw new Error(`Les compteurs du port ${portInterfaceId} sont introuvables.`);
+        counters[counter] += 1;
+    }
     isPhysicallyActive(portInterfaceId) {
         return this.topology.getConnectionForInterface(portInterfaceId) !== undefined;
     }
@@ -272,6 +315,7 @@ export class EthernetSwitch {
         return [...this.switchPortIds].filter((portId) => this.getPortConfiguration(portId).enabled && this.isPhysicallyActive(portId));
     }
     drop(frame, portInterfaceId, reason) {
+        this.incrementCounter(portInterfaceId, "inputErrors");
         this.events.recordEvent("ethernet-frame-dropped", `${reason} ${frame.sourceMac} → ${frame.destinationMac} sur ${this.portName(portInterfaceId)}.`, { layer: "L2", sourceMac: frame.sourceMac, destinationMac: frame.destinationMac, ingressPortId: portInterfaceId });
     }
 }

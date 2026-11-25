@@ -152,6 +152,42 @@ test("restores isolated switch terminal modes and their current configuration co
     .find((vlan) => vlan.id === 20).name, "Users20");
 });
 
+test("a JSON-saved switch and terminal restore as live instances with their configurations", () => {
+  const topology = createTopology();
+  let simulation = new TopologySimulation(topology);
+  let terminal = createTerminal(topology, simulation);
+
+  run(terminal, "enable");
+  run(terminal, "configure terminal");
+  run(terminal, "hostname SW1");
+  run(terminal, "vlan 20");
+  run(terminal, "name SALES");
+  run(terminal, "exit");
+  run(terminal, "interface Fa0/1");
+  run(terminal, "switchport access vlan 20");
+  run(terminal, "shutdown");
+  run(terminal, "end");
+  assert.match(run(terminal, "show vlan brief"), /^20\s+SALES\s+active\s+Fa0\/1$/m);
+  run(terminal, "write memory");
+
+  const savedTopology = JSON.parse(JSON.stringify(topology));
+  const savedTerminalState = JSON.parse(JSON.stringify(terminal.snapshot()));
+  simulation = new TopologySimulation(savedTopology);
+  terminal = createTerminal(savedTopology, simulation);
+  terminal.restoreState(savedTerminalState);
+
+  assert.ok(terminal instanceof SwitchTerminal);
+  assert.equal(typeof terminal.snapshot, "function");
+  assert.equal(terminal.prompt, "SW1#");
+  assert.match(run(terminal, "show vlan brief"), /^20\s+SALES\s+active\s+Fa0\/1$/m);
+  const networkSwitch = simulation.getSwitch("sw1");
+  assert.ok(networkSwitch.runningConfiguration.vlans.some(({ id, name }) => id === 20 && name === "SALES"));
+  assert.ok(networkSwitch.startupConfiguration.vlans.some(({ id, name }) => id === 20 && name === "SALES"));
+  const firstPortId = networkSwitch.portInterfaceIds[0];
+  assert.equal(networkSwitch.getPortConfiguration(firstPortId).accessVlan, 20);
+  assert.equal(networkSwitch.getPortConfiguration(firstPortId).enabled, false);
+});
+
 test("rejects terminal state whose selected interface no longer exists", () => {
   const topology = createTopology();
   const simulation = new TopologySimulation(topology);
@@ -226,6 +262,83 @@ test("show vlan brief follows ACCESS assignments and excludes trunks", () => {
   assert.match(withoutVlan10, /^20\s+Users20\s+active\s+Fa0\/1, Fa0\/2$/m);
 });
 
+test("VLAN ID and name queries return only matching VLANs", () => {
+  const topology = createTopology();
+  const simulation = new TopologySimulation(topology);
+  const terminal = createTerminal(topology, simulation);
+
+  configureVlan(terminal, 20, "Fa0/1");
+  assert.match(run(terminal, "show vlan id 20"), /^20\s+Users20\s+active\s+Fa0\/1$/m);
+  assert.match(run(terminal, "show vlan name Users20"), /^20\s+Users20\s+active\s+Fa0\/1$/m);
+  assert.equal(terminal.execute("show vlan id 999").tone, "error");
+  assert.match(
+    run(terminal, "show interfaces vlan 20"),
+    /not configured as a management interface/,
+  );
+});
+
+test("interface diagnostics report configured state and counters from real frames", () => {
+  const topology = createTopology();
+  const simulation = new TopologySimulation(topology);
+  const terminal = createTerminal(topology, simulation);
+  const networkSwitch = simulation.getSwitch("sw1");
+  const firstPortId = networkSwitch.portInterfaceIds[0];
+
+  assert.equal(simulation.ping("pc1", "192.168.1.20").success, true);
+  const counters = networkSwitch.getPortCounters(firstPortId);
+  assert.ok(counters.inputPackets > 0);
+  assert.ok(counters.outputPackets > 0);
+  assert.match(run(terminal, "show interfaces counters"), /Fa0\/1\s+[1-9]\d*/);
+
+  const details = run(terminal, "show interfaces Fa0/1");
+  assert.match(details, /Fa0\/1 is up \(administratively up\)/);
+  assert.match(details, /Hardware address: 02:00:00:00:11:01/);
+  assert.match(details, /Input packets: [1-9]\d*/);
+  assert.match(run(terminal, "show interfaces Fa0/1 switchport"), /Access Mode VLAN: 1/);
+
+  run(terminal, "enable");
+  run(terminal, "configure terminal");
+  run(terminal, "interface Fa0/1");
+  run(terminal, "description Uplink");
+  run(terminal, "speed 100");
+  run(terminal, "duplex full");
+  run(terminal, "end");
+
+  assert.equal(networkSwitch.getPortConfiguration(firstPortId).speedMbps, 100);
+  assert.equal(networkSwitch.getPortConfiguration(firstPortId).duplex, "full");
+  assert.match(run(terminal, "show interfaces description"), /Fa0\/1\s+up\s+up Uplink/);
+  assert.match(run(terminal, "show running-config interface Fa0/1"), /speed 100/);
+  assert.match(run(terminal, "show running-config interface Fa0/1"), /duplex full/);
+  assert.equal(
+    run(terminal, "show ip interface brief"),
+    "No VLAN management interfaces are configured.",
+  );
+});
+
+test("interface error counters increase only when ingress frames are rejected", () => {
+  const topology = createTopology();
+  const simulation = new TopologySimulation(topology);
+  const terminal = createTerminal(topology, simulation);
+  const networkSwitch = simulation.getSwitch("sw1");
+  const firstPortId = networkSwitch.portInterfaceIds[0];
+
+  networkSwitch.receive(firstPortId, {
+    etherType: "ARP",
+    sourceMac: "02:00:00:00:10:01",
+    destinationMac: "ff:ff:ff:ff:ff:ff",
+    vlanId: 20,
+    payload: {},
+  });
+
+  assert.deepEqual(networkSwitch.getPortCounters(firstPortId), {
+    inputPackets: 1,
+    outputPackets: 0,
+    inputErrors: 1,
+    outputErrors: 0,
+  });
+  assert.match(run(terminal, "show interfaces counters errors"), /Fa0\/1\s+1\s+0/);
+});
+
 test("reserved VLANs cannot be deleted or renamed", () => {
   const topology = createTopology();
   const simulation = new TopologySimulation(topology);
@@ -287,11 +400,15 @@ test("reopening a legacy switch migrates missing defaults without replacing cust
     enabled: false,
   };
   legacyConfiguration.startup = structuredClone(legacyConfiguration.running);
+  delete legacyConfiguration.running.macAgingTimeSeconds;
+  delete legacyConfiguration.startup.macAgingTimeSeconds;
   const legacyTopology = structuredClone(topology);
   legacyTopology.devices.find((device) => device.id === "sw1").switchConfig = legacyConfiguration;
 
   const restored = new TopologySimulation(legacyTopology);
   const networkSwitch = restored.getSwitch("sw1");
+  assert.equal(networkSwitch.runningConfiguration.macAgingTimeSeconds, 300);
+  assert.equal(networkSwitch.startupConfiguration.macAgingTimeSeconds, 300);
   assert.deepEqual(networkSwitch.runningConfiguration.vlans.map(({ id }) => id), [
     1, 10, 1002, 1003, 1004, 1005,
   ]);
@@ -391,16 +508,29 @@ test("MAC table commands show learned state, clear dynamic entries, and persist 
   assert.equal(simulation.ping("pc1", "192.168.1.20").success, true);
   run(terminal, "enable");
   assert.match(run(terminal, "show mac address-table dynamic"), /02:00:00:00:01:01/);
+  assert.match(run(terminal, "show mac address-table count"), /Dynamic addresses: 2/);
   run(terminal, "clear mac address-table dynamic");
   assert.equal(simulation.getSwitch("sw1").macTableSnapshot.length, 0);
 
   run(terminal, "configure terminal");
   run(terminal, "mac address-table static 02:00:00:00:01:01 vlan 1 interface Fa0/1");
+  run(terminal, "mac address-table aging-time 10");
   run(terminal, "end");
   assert.match(run(terminal, "show mac address-table static"), /static/);
+  assert.match(run(terminal, "show mac address-table aging-time"), /10 seconds/);
   assert.equal(topology.devices.find((device) => device.id === "sw1").switchConfig.running.staticMacEntries.length, 1);
+  assert.match(run(terminal, "show running-config"), /mac address-table aging-time 10/);
+  assert.match(run(terminal, "show mac address-table interface Fa0/1"), /02:00:00:00:01:01/);
+  assert.equal(simulation.ping("pc1", "192.168.1.20").success, true);
+  run(terminal, "clear mac address-table dynamic interface Fa0/2");
+  assert.match(run(terminal, "show mac address-table count"), /Dynamic addresses: 0/);
+  assert.match(run(terminal, "show mac address-table count"), /Static addresses: 1/);
+  assert.equal(terminal.execute("clear mac address-table dynamic interface Fa0/99").tone, "error");
+  run(terminal, "write memory");
   const restored = new TopologySimulation(topology).getSwitch("sw1");
   assert.equal(restored.macTableSnapshot[0].type, "static");
+  assert.equal(restored.runningConfiguration.macAgingTimeSeconds, 10);
+  assert.equal(restored.startupConfiguration.macAgingTimeSeconds, 10);
 });
 
 test("console login protects a new session and invalid settings return errors", () => {
@@ -466,7 +596,7 @@ test("trunk VLAN allow-lists reject frames outside the configured set", () => {
   assert.equal(simulation.ping("pc1", "192.168.1.20").success, false);
 });
 
-test("dynamic MAC entries age out and unsupported speed settings are not applied", () => {
+test("dynamic MAC entries age out and speed and duplex settings are configurable", () => {
   let now = 100;
   const fakeTopology = {
     getConnectionForInterface: (id) => ({ id }),
@@ -499,8 +629,56 @@ test("dynamic MAC entries age out and unsupported speed settings are not applied
   run(terminal, "configure terminal");
   run(terminal, "interface Fa0/1");
   const firstPort = simulation.getSwitch("sw1").portInterfaceIds[0];
-  const previous = simulation.getSwitch("sw1").getPortConfiguration(firstPort);
-  const result = terminal.execute("speed 100");
-  assert.equal(result.tone, "error");
-  assert.deepEqual(simulation.getSwitch("sw1").getPortConfiguration(firstPort), previous);
+  run(terminal, "speed 100");
+  run(terminal, "duplex full");
+  const configured = simulation.getSwitch("sw1").getPortConfiguration(firstPort);
+  assert.equal(configured.speedMbps, 100);
+  assert.equal(configured.duplex, "full");
+  assert.equal(terminal.execute("speed 250").tone, "error");
+  assert.equal(terminal.execute("duplex auto full").tone, "error");
+  assert.equal(simulation.getSwitch("sw1").getPortConfiguration(firstPort).speedMbps, 100);
+});
+
+test("configured MAC aging time controls dynamic entries and zero disables aging", () => {
+  let now = 100;
+  const fakeTopology = {
+    getConnectionForInterface: (id) => ({ id }),
+    getInterface: (id) => ({ name: id }),
+  };
+  const eventSink = { recordEvent() {} };
+  const networkSwitch = new EthernetSwitch(
+    "AgingSwitch",
+    ["port1", "port2"],
+    fakeTopology,
+    eventSink,
+    undefined,
+    () => now,
+  );
+  networkSwitch.setRunningConfiguration({
+    ...networkSwitch.runningConfiguration,
+    macAgingTimeSeconds: 10,
+  });
+  networkSwitch.receive("port1", {
+    etherType: "ARP",
+    sourceMac: "02:00:00:00:20:01",
+    destinationMac: "ff:ff:ff:ff:ff:ff",
+    payload: {},
+  });
+  now += 9_999;
+  assert.equal(networkSwitch.macTableSnapshot.length, 1);
+  now += 1;
+  assert.equal(networkSwitch.macTableSnapshot.length, 0);
+
+  networkSwitch.setRunningConfiguration({
+    ...networkSwitch.runningConfiguration,
+    macAgingTimeSeconds: 0,
+  });
+  networkSwitch.receive("port1", {
+    etherType: "ARP",
+    sourceMac: "02:00:00:00:20:02",
+    destinationMac: "ff:ff:ff:ff:ff:ff",
+    payload: {},
+  });
+  now += 1_000_000;
+  assert.equal(networkSwitch.macTableSnapshot.length, 1);
 });

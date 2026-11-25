@@ -11,6 +11,12 @@ export interface MacTableEntry {
     readonly type: "dynamic" | "static";
     readonly lastUpdated: number;
 }
+export interface SwitchInterfaceCounters {
+    readonly inputPackets: number;
+    readonly outputPackets: number;
+    readonly inputErrors: number;
+    readonly outputErrors: number;
+}
 export interface SwitchEgress {
     readonly portInterfaceId: InterfaceId;
     readonly frame: EthernetFrame;
@@ -20,13 +26,14 @@ export declare class EthernetSwitch {
     private readonly topology;
     private readonly events;
     private readonly now;
-    readonly macAgingTimeMs: number;
+    private readonly macAgingTimeMsOverride?;
     private readonly macTable;
+    private readonly interfaceCounters;
     private running;
     private startup;
     private readonly switchPortIds;
     private readonly switchModel;
-    constructor(name: string, portInterfaceIds: readonly InterfaceId[], topology: NetworkTopology, events: SimulationEventSink, configuration?: unknown, now?: () => number, macAgingTimeMs?: number);
+    constructor(name: string, portInterfaceIds: readonly InterfaceId[], topology: NetworkTopology, events: SimulationEventSink, configuration?: unknown, now?: () => number, macAgingTimeMsOverride?: number | undefined);
     get persistentConfiguration(): SwitchPersistentConfiguration;
     get model(): SwitchPersistentConfiguration["model"];
     get runningConfiguration(): SwitchRunningConfiguration;
@@ -35,12 +42,14 @@ export declare class EthernetSwitch {
     getPortName(portInterfaceId: InterfaceId): string;
     get macTableSnapshot(): readonly MacTableEntry[];
     getPortConfiguration(portInterfaceId: InterfaceId): SwitchPortConfiguration;
+    getPortMacAddress(portInterfaceId: InterfaceId): string | undefined;
+    getPortCounters(portInterfaceId: InterfaceId): SwitchInterfaceCounters;
     isPortOperational(portInterfaceId: InterfaceId): boolean;
     setRunningConfiguration(configuration: SwitchRunningConfiguration): void;
     saveStartupConfiguration(): void;
     reloadStartupConfiguration(): void;
     addStaticMacAddress(macAddress: string, vlanId: number, portInterfaceId: InterfaceId): void;
-    clearDynamicMacAddresses(vlanId?: number): number;
+    clearDynamicMacAddresses(vlanId?: number, portInterfaceId?: InterfaceId): number;
     removeVlanMacEntries(vlanId: number): void;
     receive(ingressPortId: InterfaceId, frame: EthernetFrame): readonly SwitchEgress[];
     private learnSource;
@@ -53,6 +62,7 @@ export declare class EthernetSwitch {
     private installStaticMacEntries;
     private assertPort;
     private assertVlanExists;
+    private incrementCounter;
     private isPhysicallyActive;
     private portName;
     private activePorts;

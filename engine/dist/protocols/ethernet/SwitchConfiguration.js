@@ -36,6 +36,7 @@ export function createDefaultSwitchConfiguration(hostname, portIds, model = CATA
             vlans: defaultVlansForModel(model).map((vlan) => ({ ...vlan })),
             ports: Object.fromEntries(portIds.map((id) => [id, defaultSwitchPortConfiguration()])),
             staticMacEntries: [],
+            macAgingTimeSeconds: 300,
             consoleLine: { loginRequired: false, password: "" },
         },
         startup: null,
@@ -126,6 +127,13 @@ function normalizeRunningConfiguration(value, hostname, portIds, model) {
     if (new Set(staticEntryKeys).size !== staticEntryKeys.length) {
         throw new Error("La configuration contient des entrées MAC statiques dupliquées.");
     }
+    const macAgingTimeSeconds = candidate.macAgingTimeSeconds === undefined
+        ? 300
+        : candidate.macAgingTimeSeconds;
+    if (!Number.isInteger(macAgingTimeSeconds)
+        || (macAgingTimeSeconds !== 0 && (macAgingTimeSeconds < 10 || macAgingTimeSeconds > 1_000_000))) {
+        throw new Error("Le délai de vieillissement MAC doit être 0 ou compris entre 10 et 1000000 secondes.");
+    }
     const consoleLine = candidate.consoleLine ?? { loginRequired: false, password: "" };
     if (typeof consoleLine.loginRequired !== "boolean"
         || typeof consoleLine.password !== "string") {
@@ -136,6 +144,7 @@ function normalizeRunningConfiguration(value, hostname, portIds, model) {
         vlans,
         ports,
         staticMacEntries,
+        macAgingTimeSeconds,
         consoleLine: { ...consoleLine },
     };
 }

@@ -296,7 +296,7 @@ export class SwitchTerminal {
             return this.changeRunning({ ...running, ports: nextPorts });
         }
         if (command === "mac")
-            return this.addStaticMac(args);
+            return this.configureMac(args);
         if (command === "spanning-tree")
             return this.stpUnavailable();
         return this.invalid();
@@ -373,10 +373,27 @@ export class SwitchTerminal {
             return this.updateSelectedPorts({ enabled: false });
         }
         if (command === "speed") {
-            return this.error("% Port speed is stored for display only; link-speed simulation is unavailable.");
+            const speedValues = {
+                "10": 10,
+                "100": 100,
+                "1000": 1000,
+                auto: "auto",
+            };
+            if (args.length !== 1 || speedValues[args[0].toLowerCase()] === undefined) {
+                return this.error("% Usage: speed {10 | 100 | 1000 | auto}");
+            }
+            return this.updateSelectedPorts({ speedMbps: speedValues[args[0].toLowerCase()] });
         }
         if (command === "duplex") {
-            return this.error("% Duplex behavior is not modeled; configuration unchanged.");
+            const duplexValues = {
+                auto: "auto",
+                full: "full",
+                half: "half",
+            };
+            if (args.length !== 1 || duplexValues[args[0].toLowerCase()] === undefined) {
+                return this.error("% Usage: duplex {auto | full | half}");
+            }
+            return this.updateSelectedPorts({ duplex: duplexValues[args[0].toLowerCase()] });
         }
         if (command === "no")
             return this.executeInterfaceNo(args);
@@ -539,15 +556,22 @@ export class SwitchTerminal {
     show(args) {
         if (args.length === 0)
             return this.incomplete();
-        const first = resolvePrefix(args[0], ["interfaces", "mac", "running-config", "spanning-tree", "startup-config", "version", "vlan"]);
+        const first = resolvePrefix(args[0], ["interfaces", "ip", "mac", "running-config", "spanning-tree", "startup-config", "version", "vlan"]);
         if (first.error)
             return this.error(first.error);
         if (first.value === "spanning-tree")
             return this.stpUnavailable();
         if (first.value === "running-config") {
-            return args.length === 1
-                ? this.normal(this.renderConfiguration(this.networkSwitch.runningConfiguration))
-                : this.invalid();
+            if (args.length === 1) {
+                return this.normal(this.renderConfiguration(this.networkSwitch.runningConfiguration));
+            }
+            const target = resolvePrefix(args[1] || "", ["interface"]);
+            if (target.error || args.length !== 3)
+                return this.invalid();
+            const portIds = this.resolvePorts([args[2]]);
+            if (!portIds || portIds.length !== 1)
+                return this.error("% Interface inconnue.");
+            return this.normal(this.renderInterfaceConfiguration(portIds[0], this.networkSwitch.runningConfiguration));
         }
         if (first.value === "startup-config") {
             if (args.length !== 1)
@@ -563,29 +587,78 @@ export class SwitchTerminal {
                 : this.invalid();
         }
         if (first.value === "vlan") {
-            const brief = resolvePrefix(args[1] || "", ["brief"]);
-            if (brief.error || args.length !== 2)
+            const target = resolvePrefix(args[1] || "", ["brief", "id", "name"]);
+            if (target.error)
+                return args.length < 2 ? this.incomplete() : this.error(target.error);
+            if (target.value === "brief") {
+                return args.length === 2 ? this.normal(this.renderVlans()) : this.invalid();
+            }
+            if (args.length !== 3)
                 return this.incomplete();
-            return this.normal(this.renderVlans());
+            const selectedVlans = target.value === "id"
+                ? this.networkSwitch.runningConfiguration.vlans.filter((vlan) => vlan.id === parseVlanId(args[2]))
+                : this.networkSwitch.runningConfiguration.vlans.filter((vlan) => vlan.name.toLowerCase() === args[2].toLowerCase());
+            if (selectedVlans.length === 0)
+                return this.error("% VLAN not found.");
+            return this.normal(this.renderVlans(selectedVlans));
         }
         if (first.value === "interfaces")
             return this.showInterfaces(args.slice(1));
+        if (first.value === "ip")
+            return this.showIp(args.slice(1));
         if (first.value === "mac")
             return this.showMacTable(args.slice(1));
         return this.invalid();
     }
     showInterfaces(args) {
-        if (args.length === 1) {
-            const status = resolvePrefix(args[0], ["status", "trunk"]);
-            if (status.error)
-                return this.error(status.error);
-            if (status.value === "status")
-                return this.normal(this.renderPortStatus());
-            return this.normal(this.renderTrunks());
-        }
         if (args.length === 0)
             return this.normal(this.renderPortStatus());
+        if (args.length === 1) {
+            const status = resolvePrefix(args[0], ["counters", "description", "status", "trunk"]);
+            if (!status.error) {
+                if (status.value === "counters")
+                    return this.normal(this.renderInterfaceCounters());
+                if (status.value === "description")
+                    return this.normal(this.renderInterfaceDescriptions());
+                if (status.value === "status")
+                    return this.normal(this.renderPortStatus());
+                return this.normal(this.renderTrunks());
+            }
+            const portIds = this.resolvePorts(args);
+            return portIds?.length === 1
+                ? this.normal(this.renderInterfaceDetails(portIds[0]))
+                : this.error("% Interface inconnue.");
+        }
+        if (args.length === 2 && args[0].toLowerCase() === "counters") {
+            const errors = resolvePrefix(args[1], ["errors"]);
+            return errors.error
+                ? this.error(errors.error)
+                : this.normal(this.renderInterfaceCounters(true));
+        }
+        if (args.length === 2 && args[0].toLowerCase() === "vlan") {
+            const vlanId = parseVlanId(args[1]);
+            if (!vlanId)
+                return this.error("% Invalid VLAN.");
+            if (!this.networkSwitch.runningConfiguration.vlans.some((vlan) => vlan.id === vlanId)) {
+                return this.error("% VLAN does not exist.");
+            }
+            return this.normal(`Vlan${vlanId} is not configured as a management interface.`);
+        }
+        if (args.length === 2) {
+            const portIds = this.resolvePorts([args[0]]);
+            const switchport = resolvePrefix(args[1], ["switchport"]);
+            if (!portIds || portIds.length !== 1 || switchport.error)
+                return this.invalid();
+            return this.normal(this.renderSwitchportDetails(portIds[0]));
+        }
         return this.invalid();
+    }
+    showIp(args) {
+        const ip = resolvePrefix(args[0] || "", ["interface"]);
+        const brief = resolvePrefix(args[1] || "", ["brief"]);
+        if (args.length !== 2 || ip.error || brief.error)
+            return this.invalid();
+        return this.normal("No VLAN management interfaces are configured.");
     }
     showMacTable(args) {
         const first = resolvePrefix(args[0] || "", ["address-table"]);
@@ -593,27 +666,40 @@ export class SwitchTerminal {
             return args.length === 0 ? this.incomplete() : this.error(first.error);
         let entries = [...this.networkSwitch.macTableSnapshot];
         if (args.length > 1) {
-            const filter = resolvePrefix(args[1], ["dynamic", "static"]);
-            if (!filter.error) {
+            const filter = resolvePrefix(args[1], ["address", "count", "dynamic", "aging-time", "interface", "static", "vlan"]);
+            if (!filter.error && filter.value === "count") {
+                return args.length === 2 ? this.normal(this.renderMacTableCount(entries)) : this.invalid();
+            }
+            if (!filter.error && filter.value === "aging-time") {
+                return args.length === 2
+                    ? this.normal(this.renderMacAgingTime())
+                    : this.invalid();
+            }
+            if (!filter.error && (filter.value === "dynamic" || filter.value === "static")) {
                 if (args.length !== 2)
                     return this.invalid();
                 entries = entries.filter((entry) => entry.type === filter.value);
             }
-            else if (args[1].toLowerCase() === "vlan" && args[2]) {
-                if (args.length !== 3)
-                    return this.invalid();
+            else if (args.length === 3 && args[1].toLowerCase() === "vlan") {
                 const vlanId = parseVlanId(args[2]);
                 if (!vlanId)
                     return this.error("% Invalid VLAN.");
                 entries = entries.filter((entry) => entry.vlanId === vlanId);
             }
-            else if (args[1].toLowerCase() === "address" && args[2]) {
-                if (args.length !== 3 || !/^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(args[2]))
+            else if (args.length === 3 && args[1].toLowerCase() === "address") {
+                if (!/^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(args[2]))
                     return this.invalid();
                 entries = entries.filter((entry) => entry.macAddress === args[2].toLowerCase());
             }
-            else {
-                return this.error(filter.error);
+            else if (args.length === 3 && args[1].toLowerCase() === "interface") {
+                const portIds = this.resolvePorts([args[2]]);
+                if (!portIds || portIds.length !== 1)
+                    return this.error("% Interface inconnue.");
+                entries = entries.filter((entry) => entry.portInterfaceId === portIds[0]);
+            }
+            else if ((filter.error && !["vlan", "address", "interface"].includes(args[1].toLowerCase()))
+                || args.length !== 3) {
+                return filter.error ? this.error(filter.error) : this.invalid();
             }
         }
         return this.normal(this.renderMacTable(entries));
@@ -625,16 +711,46 @@ export class SwitchTerminal {
         if (mac.error || table.error || dynamic.error)
             return this.incomplete();
         let vlanId;
+        let portInterfaceId;
         if (args.length === 5 && args[3].toLowerCase() === "vlan") {
             vlanId = parseVlanId(args[4]);
             if (!vlanId)
                 return this.error("% Invalid VLAN.");
         }
+        else if (args.length === 5 && args[3].toLowerCase() === "interface") {
+            const portIds = this.resolvePorts([args[4]]);
+            if (!portIds || portIds.length !== 1)
+                return this.error("% Interface inconnue.");
+            portInterfaceId = portIds[0];
+        }
         else if (args.length !== 3) {
             return this.invalid();
         }
-        const removed = this.networkSwitch.clearDynamicMacAddresses(vlanId);
+        const removed = this.networkSwitch.clearDynamicMacAddresses(vlanId, portInterfaceId);
         return this.info(`${removed} dynamic MAC address(es) cleared.`);
+    }
+    configureMac(args) {
+        const addressTable = resolvePrefix(args[0] || "", ["address-table"]);
+        if (addressTable.error)
+            return args.length === 0 ? this.incomplete() : this.error(addressTable.error);
+        const target = resolvePrefix(args[1] || "", ["aging-time", "static"]);
+        if (target.error)
+            return args.length < 2 ? this.incomplete() : this.error(target.error);
+        if (target.value === "static")
+            return this.addStaticMac(args);
+        if (args.length !== 3 || !/^\d+$/.test(args[2])) {
+            return this.error("% Usage: mac address-table aging-time <0 | 10-1000000>");
+        }
+        const macAgingTimeSeconds = Number(args[2]);
+        if (!Number.isSafeInteger(macAgingTimeSeconds)
+            || (macAgingTimeSeconds !== 0
+                && (macAgingTimeSeconds < 10 || macAgingTimeSeconds > 1_000_000))) {
+            return this.error("% Aging time must be 0 or between 10 and 1000000 seconds.");
+        }
+        return this.changeRunning({
+            ...this.networkSwitch.runningConfiguration,
+            macAgingTimeSeconds,
+        });
     }
     addStaticMac(args) {
         const addressTable = resolvePrefix(args[0] || "", ["address-table"]);
@@ -735,12 +851,12 @@ export class SwitchTerminal {
             return this.error(error instanceof Error ? error.message : "Configuration invalide.");
         }
     }
-    renderVlans() {
+    renderVlans(vlans = this.networkSwitch.runningConfiguration.vlans) {
         const rows = [
             "VLAN  Name                             Status    Ports",
             "----  -------------------------------- --------- -------------------------------",
         ];
-        [...this.networkSwitch.runningConfiguration.vlans]
+        [...vlans]
             .sort((first, second) => first.id - second.id)
             .forEach((vlan) => {
             const ports = this.networkSwitch.portInterfaceIds
@@ -764,6 +880,74 @@ export class SwitchTerminal {
         }
         return rows.join("\n");
     }
+    renderInterfaceDetails(portInterfaceId) {
+        const port = this.networkSwitch.getPortConfiguration(portInterfaceId);
+        const name = this.networkSwitch.getPortName(portInterfaceId);
+        const operational = this.networkSwitch.isPortOperational(portInterfaceId);
+        const counters = this.networkSwitch.getPortCounters(portInterfaceId);
+        const address = this.networkSwitch.getPortMacAddress(portInterfaceId) ?? "unknown";
+        const vlanDetails = port.mode === "access"
+            ? [`Access VLAN: ${port.accessVlan}`]
+            : [
+                `Native VLAN: ${port.nativeVlan}`,
+                `Allowed VLANs: ${port.allowedVlans === "all" ? "all" : port.allowedVlans.join(",")}`,
+            ];
+        const speed = port.speedMbps === "auto" ? "auto" : `${port.speedMbps} Mbps`;
+        return [
+            `${name} is ${operational ? "up" : "down"} (${port.enabled ? "administratively up" : "administratively down"})`,
+            `  Hardware address: ${address}`,
+            `  Description: ${port.description || "aucune"}`,
+            `  Switchport mode: ${port.mode}`,
+            ...vlanDetails.map((detail) => `  ${detail}`),
+            `  Speed: ${speed}`,
+            `  Duplex: ${port.duplex}`,
+            `  Input packets: ${counters.inputPackets}, errors: ${counters.inputErrors}`,
+            `  Output packets: ${counters.outputPackets}, errors: ${counters.outputErrors}`,
+        ].join("\n");
+    }
+    renderSwitchportDetails(portInterfaceId) {
+        const port = this.networkSwitch.getPortConfiguration(portInterfaceId);
+        const vlanDetails = port.mode === "access"
+            ? `Access Mode VLAN: ${port.accessVlan}`
+            : [
+                `Trunking Native Mode VLAN: ${port.nativeVlan}`,
+                `Trunking VLANs Enabled: ${port.allowedVlans === "all" ? "all" : port.allowedVlans.join(",")}`,
+            ].join("\n");
+        return [
+            `Name: ${this.networkSwitch.getPortName(portInterfaceId)}`,
+            "Switchport: Enabled",
+            `Administrative Mode: ${port.mode}`,
+            `Operational Status: ${this.networkSwitch.isPortOperational(portInterfaceId) ? "up" : "down"}`,
+            vlanDetails,
+        ].join("\n");
+    }
+    renderInterfaceCounters(errorsOnly = false) {
+        const rows = [
+            errorsOnly
+                ? "Port     InErrors OutErrors"
+                : "Port     InPackets OutPackets InErrors OutErrors",
+        ];
+        for (const portInterfaceId of this.networkSwitch.portInterfaceIds) {
+            const counters = this.networkSwitch.getPortCounters(portInterfaceId);
+            rows.push(errorsOnly
+                ? `${this.networkSwitch.getPortName(portInterfaceId).padEnd(8)} ${String(counters.inputErrors).padEnd(8)} ${counters.outputErrors}`
+                : `${this.networkSwitch.getPortName(portInterfaceId).padEnd(8)} ${String(counters.inputPackets).padEnd(10)} ${String(counters.outputPackets).padEnd(10)} ${String(counters.inputErrors).padEnd(8)} ${counters.outputErrors}`);
+        }
+        return rows.join("\n");
+    }
+    renderInterfaceDescriptions() {
+        const rows = ["Interface  Status       Protocol Description"];
+        for (const portInterfaceId of this.networkSwitch.portInterfaceIds) {
+            const port = this.networkSwitch.getPortConfiguration(portInterfaceId);
+            const operational = this.networkSwitch.isPortOperational(portInterfaceId);
+            rows.push(`${this.networkSwitch.getPortName(portInterfaceId).padEnd(10)} ${(port.enabled ? "up" : "administratively down").padEnd(12)} ${operational ? "up" : "down"} ${port.description}`);
+        }
+        return rows.join("\n");
+    }
+    renderInterfaceConfiguration(portInterfaceId, running) {
+        return ["Building configuration...", ...this.renderPortConfiguration(portInterfaceId, running)]
+            .join("\n");
+    }
     renderTrunks() {
         const trunks = this.networkSwitch.portInterfaceIds.filter((id) => this.networkSwitch.getPortConfiguration(id).mode === "trunk"
             && this.networkSwitch.isPortOperational(id));
@@ -782,6 +966,21 @@ export class SwitchTerminal {
         entries.forEach((entry) => rows.push(`${String(entry.vlanId).padEnd(5)} ${entry.macAddress.padEnd(17)} ${entry.type.padEnd(9)} ${this.networkSwitch.getPortName(entry.portInterfaceId)}`));
         return rows.join("\n");
     }
+    renderMacTableCount(entries) {
+        const dynamicEntries = entries.filter((entry) => entry.type === "dynamic").length;
+        const staticEntries = entries.length - dynamicEntries;
+        return [
+            `Dynamic addresses: ${dynamicEntries}`,
+            `Static addresses: ${staticEntries}`,
+            `Total addresses: ${entries.length}`,
+        ].join("\n");
+    }
+    renderMacAgingTime() {
+        const seconds = this.networkSwitch.runningConfiguration.macAgingTimeSeconds;
+        return seconds === 0
+            ? "MAC address aging is disabled."
+            : `MAC address aging time is ${seconds} seconds.`;
+    }
     renderConfiguration(running) {
         const rows = [
             "Building configuration...",
@@ -791,25 +990,68 @@ export class SwitchTerminal {
             " name default",
         ];
         running.vlans.filter((vlan) => vlan.id !== 1).forEach((vlan) => rows.push(`vlan ${vlan.id}`, ` name ${vlan.name}`));
+        rows.push(`mac address-table aging-time ${running.macAgingTimeSeconds}`);
         running.staticMacEntries.forEach((entry) => rows.push(`mac address-table static ${entry.macAddress} vlan ${entry.vlanId} interface ${this.networkSwitch.getPortName(entry.portInterfaceId)}`));
         for (const id of this.networkSwitch.portInterfaceIds) {
-            const port = running.ports[id];
-            if (!port)
-                continue;
-            rows.push(`interface ${this.networkSwitch.getPortName(id)}`, port.description ? ` description ${port.description}` : "", port.enabled ? "" : " shutdown", ` switchport mode ${port.mode}`, port.mode === "access" ? ` switchport access vlan ${port.accessVlan}` : "", port.mode === "trunk" ? ` switchport trunk native vlan ${port.nativeVlan}` : "", port.mode === "trunk"
-                ? ` switchport trunk allowed vlan ${port.allowedVlans === "all" ? "all" : port.allowedVlans.join(",")}`
-                : "", ` speed ${port.speedMbps}`, ` duplex ${port.duplex}`);
+            rows.push(...this.renderPortConfiguration(id, running));
         }
         rows.push("line console 0", running.consoleLine.password ? ` password ${running.consoleLine.password}` : "", running.consoleLine.loginRequired ? " login" : " no login", "end");
         return rows.filter((row) => row !== "").join("\n");
     }
+    renderPortConfiguration(portInterfaceId, running) {
+        const port = running.ports[portInterfaceId];
+        if (!port)
+            return [];
+        return [
+            `interface ${this.networkSwitch.getPortName(portInterfaceId)}`,
+            port.description ? ` description ${port.description}` : "",
+            port.enabled ? "" : " shutdown",
+            ` switchport mode ${port.mode}`,
+            port.mode === "access" ? ` switchport access vlan ${port.accessVlan}` : "",
+            port.mode === "trunk" ? ` switchport trunk native vlan ${port.nativeVlan}` : "",
+            port.mode === "trunk"
+                ? ` switchport trunk allowed vlan ${port.allowedVlans === "all" ? "all" : port.allowedVlans.join(",")}`
+                : "",
+            ` speed ${port.speedMbps}`,
+            ` duplex ${port.duplex}`,
+        ].filter((row) => row !== "");
+    }
     helpText() {
         return this.commandsForMode().join("  ");
+    }
+    interfaceShowCompletions() {
+        return [
+            "show interfaces counters",
+            "show interfaces counters errors",
+            "show interfaces description",
+            "show interfaces status",
+            "show interfaces trunk",
+            "show ip interface brief",
+            "show vlan id",
+            "show vlan name",
+            "show mac address-table count",
+            "show mac address-table aging-time",
+            ...this.networkSwitch.portInterfaceIds.flatMap((id) => {
+                const name = this.networkSwitch.getPortName(id);
+                return [
+                    `show interfaces ${name}`,
+                    `show interfaces ${name} switchport`,
+                    `show mac address-table interface ${name}`,
+                    `show running-config interface ${name}`,
+                ];
+            }),
+        ];
     }
     completions() {
         const base = this.commandsForMode();
         if (this.mode === "user") {
-            return [...base, "show version", "show vlan brief", "show interfaces status", "show mac address-table"];
+            return [
+                ...base,
+                "show version",
+                "show vlan brief",
+                "show mac address-table",
+                ...this.interfaceShowCompletions(),
+            ];
         }
         if (this.mode === "privileged") {
             return [
@@ -818,16 +1060,21 @@ export class SwitchTerminal {
                 "show running-config",
                 "show startup-config",
                 "show vlan brief",
-                "show interfaces status",
-                "show interfaces trunk",
                 "show mac address-table",
+                ...this.interfaceShowCompletions(),
                 "clear mac address-table dynamic",
+                ...this.networkSwitch.portInterfaceIds.map((id) => `clear mac address-table dynamic interface ${this.networkSwitch.getPortName(id)}`),
                 "write memory",
                 "copy running-config startup-config",
             ];
         }
         if (this.mode === "global") {
-            return [...base, "interface range", ...this.networkSwitch.portInterfaceIds.map((id) => `interface ${this.networkSwitch.getPortName(id)}`)];
+            return [
+                ...base,
+                "interface range",
+                "mac address-table aging-time",
+                ...this.networkSwitch.portInterfaceIds.map((id) => `interface ${this.networkSwitch.getPortName(id)}`),
+            ];
         }
         if (this.mode === "interface") {
             return [
@@ -838,6 +1085,13 @@ export class SwitchTerminal {
                 "switchport trunk native vlan",
                 "switchport trunk allowed vlan",
                 "no shutdown",
+                "speed 10",
+                "speed 100",
+                "speed 1000",
+                "speed auto",
+                "duplex auto",
+                "duplex half",
+                "duplex full",
             ];
         }
         return base;

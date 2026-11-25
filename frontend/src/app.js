@@ -593,7 +593,9 @@ const navigationLinks = document.querySelectorAll(".nav-link[href], .mobile-nav-
 function updateNavigation() {
   const currentHash = window.location.hash || "#accueil";
   navigationLinks.forEach((link) => {
-    const active = link.getAttribute("href") === currentHash;
+    const href = link.getAttribute("href");
+    const active = href === currentHash
+      || (href === "#apprendre" && currentHash.startsWith("#apprendre/"));
     link.classList.toggle("is-active", active);
     if (active) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");

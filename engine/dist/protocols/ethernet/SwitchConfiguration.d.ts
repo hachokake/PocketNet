@@ -28,6 +28,7 @@ export interface SwitchRunningConfiguration {
     readonly vlans: readonly SwitchVlan[];
     readonly ports: Readonly<Record<InterfaceId, SwitchPortConfiguration>>;
     readonly staticMacEntries: readonly SwitchStaticMacEntry[];
+    readonly macAgingTimeSeconds: number;
     readonly consoleLine: {
         readonly loginRequired: boolean;
         readonly password: string;

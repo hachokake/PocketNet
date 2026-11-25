@@ -107,6 +107,13 @@ test("creates and restores switch configuration with backwards-compatible defaul
     normalizeTopology(legacy).devices.find((item) => item.kind === "switch").switchConfig,
     device.switchConfig,
   );
+
+  const legacyAgingConfig = structuredClone(topology);
+  const legacySwitch = legacyAgingConfig.devices.find((item) => item.kind === "switch");
+  delete legacySwitch.switchConfig.running.macAgingTimeSeconds;
+  const migratedAging = normalizeTopology(legacyAgingConfig)
+    .devices.find((item) => item.kind === "switch").switchConfig;
+  assert.equal(migratedAging.running.macAgingTimeSeconds, 300);
 });
 
 test("migrates legacy switch VLANs and interface names without losing custom settings", () => {

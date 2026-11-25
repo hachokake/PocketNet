@@ -29,14 +29,14 @@ def _environment_list(name, default=""):
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
-DEBUG = _environment_bool("DJANGO_DEBUG", True)
+_configured_hosts = os.environ.get("DJANGO_ALLOWED_HOSTS", "").strip()
+DEBUG = _environment_bool("DJANGO_DEBUG", not bool(_configured_hosts))
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "").strip()
 if not SECRET_KEY:
     if not DEBUG:
         raise ImproperlyConfigured("DJANGO_SECRET_KEY is required when DEBUG is disabled.")
     SECRET_KEY = "insecure-pocketnet-local-development-key"
 
-_configured_hosts = os.environ.get("DJANGO_ALLOWED_HOSTS", "").strip()
 if not DEBUG and not _configured_hosts:
     raise ImproperlyConfigured("DJANGO_ALLOWED_HOSTS is required when DEBUG is disabled.")
 
@@ -49,6 +49,7 @@ CSRF_TRUSTED_ORIGINS = _environment_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "api",
+    "learning",
 ]
 
 MIDDLEWARE = [

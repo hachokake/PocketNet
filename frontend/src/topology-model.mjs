@@ -45,6 +45,7 @@ export function createDefaultSwitchConfiguration(hostname, interfaces, model = C
         defaultSwitchPortConfiguration(),
       ])),
       staticMacEntries: [],
+      macAgingTimeSeconds: 300,
       consoleLine: { loginRequired: false, password: "" },
     },
     startup: null,
@@ -144,11 +145,21 @@ function normalizeSwitchRunningConfiguration(value, fallback, hostname, interfac
     !== normalizedStaticMacEntries.length) {
     throw new Error("La configuration contient des entrées MAC statiques dupliquées.");
   }
+  const macAgingTimeSeconds = value.macAgingTimeSeconds === undefined
+    ? 300
+    : value.macAgingTimeSeconds;
+  if (
+    !Number.isInteger(macAgingTimeSeconds)
+    || (macAgingTimeSeconds !== 0 && (macAgingTimeSeconds < 10 || macAgingTimeSeconds > 1_000_000))
+  ) {
+    throw new Error("Le délai de vieillissement MAC doit être 0 ou compris entre 10 et 1000000 secondes.");
+  }
   return {
     hostname: value.hostname.trim(),
     vlans,
     ports,
     staticMacEntries: normalizedStaticMacEntries,
+    macAgingTimeSeconds,
     consoleLine: { ...consoleLine },
   };
 }

@@ -83,6 +83,7 @@ export { EthernetSwitch } from "./protocols/ethernet/EthernetSwitch.js";
 export type {
   MacTableEntry,
   SwitchEgress,
+  SwitchInterfaceCounters,
 } from "./protocols/ethernet/EthernetSwitch.js";
 export {
   DEFAULT_IPV4_TTL,

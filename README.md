@@ -18,10 +18,12 @@ python backend\manage.py runserver
 Ouvrez ensuite <http://127.0.0.1:8000/>. L'interface et l'API sont servies par
 Django ; le moteur compilé est servi comme module ES indépendant.
 
-Pour vérifier le backend :
+Pour vérifier l'ensemble des tests Django depuis la racine du dépôt :
 
 ```powershell
-python backend\manage.py test api
+Set-Location backend
+python manage.py test
+Set-Location ..
 ```
 
 Le moteur TypeScript est indépendant du backend. Pour le compiler et lancer ses
@@ -36,6 +38,8 @@ npm test
 ## Organisation
 
 - `backend/` : projet Django et endpoints serveur, dont le contrôle de santé.
+- `backend/learning/` : catalogue public des cours, chapitres, exercices,
+  équipements et protocoles, avec contenu initial livré par migration.
 - `frontend/` : interface responsive, ressources web et base PWA.
 - `engine/src/domain/` : équipements, interfaces, connexions, paquets,
   événements et erreurs du domaine réseau.
@@ -56,11 +60,11 @@ MAC, les VLAN d'accès, ainsi que l'encapsulation/désencapsulation 802.1Q sur
 les trunks. Les entrées MAC dynamiques expirent après cinq minutes. Le service
 worker met en cache les modules du laboratoire, mais pas les API.
 
-L'écran d'accueil propose des tutoriels de référence et un catalogue
-documentaire. Les laboratoires personnels créés depuis l'écran d'accueil sont
-enregistrés dans le stockage local du navigateur ; ils ne sont ni synchronisés
-ni sauvegardés par Django. Le laboratoire Ethernet fourni est un scénario guidé
-distinct de ces espaces personnels.
+L'écran d'accueil propose un catalogue public de cours et de fiches alimenté
+par l'API Django. Les laboratoires personnels créés depuis l'écran d'accueil
+sont enregistrés dans le stockage local du navigateur ; ils ne sont ni
+synchronisés ni sauvegardés par Django. Le laboratoire Ethernet fourni est un
+scénario guidé distinct de ces espaces personnels.
 
 Chaque laboratoire personnel s'ouvre dans l'éditeur de topologie. Les
 équipements, leurs interfaces, leurs positions et les câbles sont enregistrés
@@ -76,18 +80,31 @@ utilisateur, privilégié, configuration globale, interface, VLAN et console.
 Les commandes principales incluent `enable`, `configure terminal`, `hostname`,
 `interface`/`interface range`, `shutdown`/`no shutdown`, `switchport mode`,
 `switchport access vlan`, `switchport trunk allowed vlan`, `vlan`, `show vlan
-brief`, `show interfaces status`, `show interfaces trunk`, `show mac
-address-table`, `clear mac address-table dynamic`, `write memory`,
-`show running-config`, `show startup-config` et `reload`. Les commandes
-acceptent les abréviations non ambiguës. La configuration running et startup,
-la base VLAN et les ports sont conservés dans le laboratoire local.
+brief`, `show vlan id <id>`, `show vlan name <nom>`, `show interfaces status`,
+`show interfaces trunk`, `show interfaces
+<port>`, `show interfaces <port> switchport`, `show interfaces counters`,
+`show interfaces counters errors`, `show interfaces description`,
+`show ip interface brief`, `show running-config interface <port>`, `show mac
+address-table`, `show mac address-table count`,
+`show mac address-table aging-time`, `show mac address-table interface <port>`,
+`mac address-table aging-time <secondes>`,
+`clear mac address-table dynamic interface <port>`,
+`clear mac address-table dynamic`, `write memory`, `show running-config`,
+`show startup-config` et `reload`. Les compteurs
+reflètent les trames réellement reçues, émises ou rejetées par le moteur.
+`speed` et `duplex` configurent les propriétés persistées du port ; le débit,
+les collisions et la négociation physique des liens ne sont pas simulés. Les
+commandes acceptent les abréviations non ambiguës. L’âge MAC accepte 0 pour
+désactiver l’expiration, ou une durée de 10 à 1000000 secondes. La configuration
+running et startup, la base VLAN et les ports sont conservés dans le laboratoire
+local.
 
 Les VLAN et trunks modifient effectivement le transfert des trames et peuvent
 isoler ou relier des hôtes selon leur configuration. Les ports configurés en
 shutdown ne transfèrent pas les trames. Les commandes STP répondent
 explicitement que STP n'est pas implémenté ; aucune prévention de boucle STP
-n'est simulée. La vitesse/duplex et les fonctionnalités de gestion IPv4 du
-switch ne sont pas simulées non plus.
+n'est simulée. Les fonctionnalités de gestion IPv4 du switch ne sont pas
+simulées non plus.
 
 Le terminal asynchrone accepte `hostname`, `ipconfig` (dont `/all`, `/flushdns`,
 `/release` et `/renew`), `getmac`, `help`, `cls`, `ver`, `ping` (options `-n`,
@@ -205,6 +222,24 @@ backend path to `sys.path`.
 
 ### 4. Initialize the database and collect static files
 
+For an existing checkout, update the deployment from `~/PocketNet`:
+
+```bash
+cd ~/PocketNet
+git pull --ff-only origin main
+source ~/.virtualenvs/pocketnet-venv/bin/activate
+pip install -r backend/requirements.txt
+python backend/manage.py migrate
+python backend/manage.py collectstatic --noinput
+python backend/manage.py check --deploy
+```
+
+Then reload the web app from the PythonAnywhere **Web** tab. For the first
+deployment, follow the clone and WSGI setup below before running the commands
+above. In the **Web** tab, enable **Force HTTPS** after HTTPS is available;
+`DJANGO_SECURE_SSL_REDIRECT=0` assumes that PythonAnywhere handles the redirect.
+Keep HSTS disabled until HTTPS has been confirmed for the deployed domain.
+
 From `~/PocketNet`, with `pocketnet-venv` active:
 
 ```bash
@@ -217,6 +252,12 @@ The compiled JavaScript modules in `engine/dist/` are included in Git so the
 PythonAnywhere deployment does not need Node.js. When changing the simulation
 engine, rebuild them locally from `engine/` with `npm ci` and `npm run build`,
 then include the generated files in the next commit.
+
+After each frontend or engine deployment, run `collectstatic` and reload the
+PythonAnywhere web app. The PWA shell cache and app asset query version are
+advanced with frontend releases; on the first visit, accept the in-app update
+notice and reload. This refreshes executable assets without clearing browser
+storage, where user laboratories and switch configurations are stored.
 
 ### 5. Map static files and reload
 

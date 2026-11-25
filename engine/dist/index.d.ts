@@ -29,7 +29,7 @@ export type { AllowedVlanSet, SwitchPersistentConfiguration, SwitchModel, Switch
 export { ArpCache, ETHERNET_BROADCAST_MAC, generateLocalMacAddress, normalizeMacAddress, } from "./protocols/arp/arp.js";
 export type { ArpMessage, MacAddress } from "./protocols/arp/arp.js";
 export { EthernetSwitch } from "./protocols/ethernet/EthernetSwitch.js";
-export type { MacTableEntry, SwitchEgress, } from "./protocols/ethernet/EthernetSwitch.js";
+export type { MacTableEntry, SwitchEgress, SwitchInterfaceCounters, } from "./protocols/ethernet/EthernetSwitch.js";
 export { DEFAULT_IPV4_TTL, validateIPv4Ttl, } from "./protocols/ethernet/ethernet.js";
 export type { EtherType, EthernetFrame, IPv4Packet } from "./protocols/ethernet/ethernet.js";
 export type { IcmpMessage } from "./protocols/icmp/icmp.js";
