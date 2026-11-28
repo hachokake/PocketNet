@@ -77,7 +77,11 @@ dans les propriétés, sous réserve qu'elle soit valide et unique.
 Un double-clic sur un PC ouvre ses vues Desktop, IP Configuration et Terminal.
 Un double-clic sur un switch ouvre une console IOS pédagogique avec les modes
 utilisateur, privilégié, configuration globale, interface, VLAN et console.
-Les commandes principales incluent `enable`, `configure terminal`, `hostname`,
+Le Catalyst 2960 conserve ses fonctions Layer 2 ; le Catalyst 3560 ajoute les
+interfaces VLAN (SVI), les ports routés et le routage IPv4 réel entre VLANs et
+réseaux connectés par routes statiques. Le routage reste désactivé jusqu'à la
+commande `ip routing`. Les commandes principales incluent `enable`,
+`configure terminal`, `hostname`,
 `interface`/`interface range`, `shutdown`/`no shutdown`, `switchport mode`,
 `switchport access vlan`, `switchport trunk allowed vlan`, `vlan`, `show vlan
 brief`, `show vlan id <id>`, `show vlan name <nom>`, `show interfaces status`,
@@ -99,12 +103,23 @@ désactiver l’expiration, ou une durée de 10 à 1000000 secondes. La configur
 running et startup, la base VLAN et les ports sont conservés dans le laboratoire
 local.
 
+Sur un Catalyst 3560, configurez un VLAN avec `vlan <id>`, son interface
+virtuelle avec `interface vlan <id>` puis `ip address <IPv4> <masque>`.
+Configurez un port Layer 3 avec `interface <port>`, `no switchport` et
+`ip address <IPv4> <masque>`. Les routes statiques utilisent
+`ip route <destination> <masque> <prochain-saut>` ; `show ip route`,
+`show ip interface brief`, `show ip arp` et `ping <IPv4>` consultent ou
+exécutent le vrai chemin simulé ARP/IPv4/ICMP. Une interface VLAN est
+opérationnelle uniquement si elle est activée et qu'un port/trunk actif porte
+son VLAN. Les laboratoires existants restent des Catalyst 2960 Layer 2 et
+conservent leurs configurations.
+
 Les VLAN et trunks modifient effectivement le transfert des trames et peuvent
 isoler ou relier des hôtes selon leur configuration. Les ports configurés en
 shutdown ne transfèrent pas les trames. Les commandes STP répondent
 explicitement que STP n'est pas implémenté ; aucune prévention de boucle STP
-n'est simulée. Les fonctionnalités de gestion IPv4 du switch ne sont pas
-simulées non plus.
+n'est simulée. Le routage dynamique, DHCP et les autres protocoles de routage
+ne sont pas simulés.
 
 Le terminal asynchrone accepte `hostname`, `ipconfig` (dont `/all`, `/flushdns`,
 `/release` et `/renew`), `getmac`, `help`, `cls`, `ver`, `ping` (options `-n`,

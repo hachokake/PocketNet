@@ -21,6 +21,7 @@ export interface SwitchEgress {
     readonly portInterfaceId: InterfaceId;
     readonly frame: EthernetFrame;
 }
+export type Layer3FrameHandler = (ingressPortId: InterfaceId, vlanId: number | null, frame: EthernetFrame) => boolean;
 export declare class EthernetSwitch {
     readonly name: string;
     private readonly topology;
@@ -33,6 +34,8 @@ export declare class EthernetSwitch {
     private startup;
     private readonly switchPortIds;
     private readonly switchModel;
+    private layer3FrameHandler?;
+    private configurationChangeHandler?;
     constructor(name: string, portInterfaceIds: readonly InterfaceId[], topology: NetworkTopology, events: SimulationEventSink, configuration?: unknown, now?: () => number, macAgingTimeMsOverride?: number | undefined);
     get persistentConfiguration(): SwitchPersistentConfiguration;
     get model(): SwitchPersistentConfiguration["model"];
@@ -45,6 +48,10 @@ export declare class EthernetSwitch {
     getPortMacAddress(portInterfaceId: InterfaceId): string | undefined;
     getPortCounters(portInterfaceId: InterfaceId): SwitchInterfaceCounters;
     isPortOperational(portInterfaceId: InterfaceId): boolean;
+    get supportsLayer3(): boolean;
+    setLayer3FrameHandler(handler: Layer3FrameHandler): void;
+    setConfigurationChangeHandler(handler: () => void): void;
+    isVlanOperational(vlanId: number): boolean;
     setRunningConfiguration(configuration: SwitchRunningConfiguration): void;
     saveStartupConfiguration(): void;
     reloadStartupConfiguration(): void;
@@ -52,6 +59,8 @@ export declare class EthernetSwitch {
     clearDynamicMacAddresses(vlanId?: number, portInterfaceId?: InterfaceId): number;
     removeVlanMacEntries(vlanId: number): void;
     receive(ingressPortId: InterfaceId, frame: EthernetFrame): readonly SwitchEgress[];
+    forwardFromVlan(vlanId: number, frame: EthernetFrame): readonly SwitchEgress[];
+    recordRoutedOutput(portInterfaceId: InterfaceId): void;
     private learnSource;
     private ingressVlan;
     private prepareEgress;

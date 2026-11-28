@@ -1,10 +1,13 @@
 import type { InterfaceId } from "../../domain/NetworkInterface.js";
+import { type IPv4Configuration } from "../ipv4/address.js";
 export type SwitchPortMode = "access" | "trunk";
 export type AllowedVlanSet = "all" | readonly number[];
 export declare const CATALYST_2960_MODEL: "catalyst-2960";
-export type SwitchModel = typeof CATALYST_2960_MODEL;
+export declare const CATALYST_3560_MODEL: "catalyst-3560";
+export type SwitchModel = typeof CATALYST_2960_MODEL | typeof CATALYST_3560_MODEL;
 export interface SwitchPortConfiguration {
     readonly enabled: boolean;
+    readonly switchport: boolean;
     readonly mode: SwitchPortMode;
     readonly accessVlan: number;
     readonly nativeVlan: number;
@@ -23,6 +26,17 @@ export interface SwitchStaticMacEntry {
     readonly vlanId: number;
     readonly portInterfaceId: InterfaceId;
 }
+export interface SwitchVlanInterfaceConfiguration {
+    readonly vlanId: number;
+    readonly enabled: boolean;
+    readonly description: string;
+    readonly ipv4: IPv4Configuration | null;
+}
+export interface SwitchStaticRouteConfiguration {
+    readonly destination: string;
+    readonly subnetMask: string;
+    readonly nextHop: string;
+}
 export interface SwitchRunningConfiguration {
     readonly hostname: string;
     readonly vlans: readonly SwitchVlan[];
@@ -33,6 +47,10 @@ export interface SwitchRunningConfiguration {
         readonly loginRequired: boolean;
         readonly password: string;
     };
+    readonly ipRouting?: boolean;
+    readonly vlanInterfaces?: readonly SwitchVlanInterfaceConfiguration[];
+    readonly routedPorts?: Readonly<Record<InterfaceId, IPv4Configuration>>;
+    readonly staticRoutes?: readonly SwitchStaticRouteConfiguration[];
 }
 export interface SwitchPersistentConfiguration {
     readonly model: SwitchModel;

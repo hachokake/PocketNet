@@ -14,6 +14,27 @@ export interface SwitchTerminalState {
 }
 export interface SwitchTerminalOptions {
     readonly onConfigurationChange: (configuration: SwitchPersistentConfiguration) => void;
+    readonly ping?: (destinationIp: string) => {
+        readonly success: boolean;
+        readonly message: string;
+    };
+    readonly getLayer3Interfaces?: () => readonly {
+        readonly name: string;
+        readonly address: string;
+        readonly status: "up" | "down";
+        readonly protocol: "up" | "down";
+    }[];
+    readonly getRouteEntries?: () => readonly {
+        readonly destination: string;
+        readonly netmask: string;
+        readonly gateway: string;
+        readonly interfaceName: string;
+        readonly metric: number;
+    }[];
+    readonly getArpEntries?: () => readonly {
+        readonly ipAddress: string;
+        readonly macAddress: string;
+    }[];
 }
 export declare class SwitchTerminal {
     private readonly networkSwitch;
@@ -35,6 +56,11 @@ export declare class SwitchTerminal {
     private executePrivileged;
     private executeGlobal;
     private executeGlobalNo;
+    private configureGlobalIp;
+    private configureInterfaceIp;
+    private resetSelectedPorts;
+    private updateSelectedVlanInterface;
+    private setSelectedPortSwitchport;
     private executeInterface;
     private executeInterfaceNo;
     private configureSwitchport;
@@ -43,6 +69,7 @@ export declare class SwitchTerminal {
     private show;
     private showInterfaces;
     private showIp;
+    private showArp;
     private showMacTable;
     private clear;
     private configureMac;
@@ -60,6 +87,9 @@ export declare class SwitchTerminal {
     private renderInterfaceCounters;
     private renderInterfaceDescriptions;
     private renderInterfaceConfiguration;
+    private renderLayer3Interfaces;
+    private renderRoutes;
+    private renderVlanInterfaceConfiguration;
     private renderTrunks;
     private renderMacTable;
     private renderMacTableCount;

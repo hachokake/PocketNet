@@ -7,6 +7,7 @@ import {
   type SwitchRunningConfiguration,
 } from "../protocols/ethernet/SwitchConfiguration.js";
 import type { EthernetSwitch, MacTableEntry } from "../protocols/ethernet/EthernetSwitch.js";
+import { getNetworkAddress, validateIPv4Configuration } from "../protocols/ipv4/address.js";
 
 export type SwitchTerminalMode =
   | "user"
@@ -31,6 +32,27 @@ export interface SwitchTerminalState {
 
 export interface SwitchTerminalOptions {
   readonly onConfigurationChange: (configuration: SwitchPersistentConfiguration) => void;
+  readonly ping?: (destinationIp: string) => {
+    readonly success: boolean;
+    readonly message: string;
+  };
+  readonly getLayer3Interfaces?: () => readonly {
+    readonly name: string;
+    readonly address: string;
+    readonly status: "up" | "down";
+    readonly protocol: "up" | "down";
+  }[];
+  readonly getRouteEntries?: () => readonly {
+    readonly destination: string;
+    readonly netmask: string;
+    readonly gateway: string;
+    readonly interfaceName: string;
+    readonly metric: number;
+  }[];
+  readonly getArpEntries?: () => readonly {
+    readonly ipAddress: string;
+    readonly macAddress: string;
+  }[];
 }
 
 function isSwitchTerminalMode(value: unknown): value is SwitchTerminalMode {
@@ -97,7 +119,9 @@ export class SwitchTerminal {
       case "privileged": return `${hostname}#`;
       case "global": return `${hostname}(config)#`;
       case "interface":
-        return `${hostname}(config-${this.selectedPorts.length > 1 ? "if-range" : "if"})#`;
+        return `${hostname}(config-${this.selectedVlanId !== null
+          ? "if"
+          : this.selectedPorts.length > 1 ? "if-range" : "if"})#`;
       case "vlan": return `${hostname}(config-vlan)#`;
       case "line": return `${hostname}(config-line)#`;
     }
@@ -172,7 +196,17 @@ export class SwitchTerminal {
       || !vlanExists
       || typeof value.authenticated !== "boolean"
       || typeof value.awaitingPassword !== "boolean"
-      || (mode === "interface" && selectedPorts.length === 0)
+      || (mode === "interface"
+        && selectedPorts.length === 0
+        && (selectedVlanId === null
+          || selectedVlanId === undefined
+          || !this.networkSwitch.supportsLayer3))
+      || (mode === "interface"
+        && selectedVlanId !== null
+        && selectedVlanId !== undefined
+        && (selectedPorts.length !== 0
+          || !(this.networkSwitch.runningConfiguration.vlanInterfaces ?? [])
+            .some((item) => item.vlanId === selectedVlanId)))
       || (mode === "vlan" && (selectedVlanId === null || selectedVlanId === undefined))
       || (value.awaitingPassword && (mode !== "user" || value.authenticated))
     ) {
@@ -201,8 +235,8 @@ export class SwitchTerminal {
     switch (this.mode) {
       case "user": return ["enable", "exit", "show"];
       case "privileged": return ["clear", "configure", "copy", "disable", "exit", "ping", "reload", "show", "write"];
-      case "global": return ["default", "end", "exit", "hostname", "interface", "line", "mac", "no", "spanning-tree", "vlan"];
-      case "interface": return ["default", "description", "end", "exit", "duplex", "no", "shutdown", "speed", "spanning-tree", "switchport"];
+      case "global": return ["default", "end", "exit", "hostname", "interface", "ip", "line", "mac", "no", "spanning-tree", "vlan"];
+      case "interface": return ["default", "description", "end", "exit", "duplex", "ip", "no", "shutdown", "speed", "spanning-tree", "switchport"];
       case "vlan": return ["end", "exit", "name"];
       case "line": return ["end", "exit", "login", "no", "password"];
     }
@@ -263,7 +297,17 @@ export class SwitchTerminal {
       return this.info("Le commutateur a été rechargé avec sa configuration de démarrage.");
     }
     if (command === "ping") {
-      return this.error("% Ping indisponible : aucune interface de gestion IPv4 n’est configurée sur ce commutateur.");
+      if (!this.networkSwitch.supportsLayer3) {
+        return this.error("% Ping indisponible : configurez une interface VLAN sur un Catalyst 3560.");
+      }
+      if (args.length !== 1) return this.error("% Usage: ping <destination IPv4>");
+      if (!this.options.ping) return this.error("% Le moteur de ping Layer 3 n’est pas disponible.");
+      try {
+        const result = this.options.ping(args[0]);
+        return result.success ? this.info(result.message) : this.error(result.message);
+      } catch (error) {
+        return this.error(error instanceof Error ? error.message : "La simulation du ping a échoué.");
+      }
     }
     return this.invalid();
   }
@@ -281,10 +325,41 @@ export class SwitchTerminal {
       if (args.length !== 1 || !/^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$/.test(args[0])) return this.invalid();
       return this.changeRunning({ ...this.networkSwitch.runningConfiguration, hostname: args[0] });
     }
+    if (command === "ip") return this.configureGlobalIp(args);
     if (command === "interface") {
+      if (args[0]?.toLowerCase() === "vlan") {
+        if (!this.networkSwitch.supportsLayer3) {
+          return this.error("% Les interfaces VLAN Layer 3 nécessitent un Catalyst 3560.");
+        }
+        if (args.length !== 2) return this.error("% Usage: interface vlan <id>");
+        const vlanId = parseVlanId(args[1]);
+        if (!vlanId) return this.error("% VLAN ID must be between 1 and 4094.");
+        if (!this.networkSwitch.runningConfiguration.vlans.some((vlan) => vlan.id === vlanId)) {
+          return this.error("% VLAN does not exist.");
+        }
+        const running = this.networkSwitch.runningConfiguration;
+        const vlanInterfaces = [...(running.vlanInterfaces ?? [])];
+        if (!vlanInterfaces.some((item) => item.vlanId === vlanId)) {
+          const result = this.changeRunning({
+            ...running,
+            vlanInterfaces: [...vlanInterfaces, {
+              vlanId,
+              enabled: true,
+              description: "",
+              ipv4: null,
+            }],
+          });
+          if (result.tone === "error") return result;
+        }
+        this.selectedPorts = [];
+        this.selectedVlanId = vlanId;
+        this.mode = "interface";
+        return this.info(`Configuration de l’interface Vlan${vlanId}.`);
+      }
       const ports = this.resolvePorts(args);
       if (!ports) return this.error("% Interface inconnue ou plage de ports invalide.");
       this.selectedPorts = ports;
+      this.selectedVlanId = null;
       this.mode = "interface";
       return this.info(`Configuration de ${ports.map((id) => this.networkSwitch.getPortName(id)).join(", ")}.`);
     }
@@ -326,8 +401,12 @@ export class SwitchTerminal {
       if (!ports) return this.error("% Interface inconnue.");
       const running = this.networkSwitch.runningConfiguration;
       const nextPorts = { ...running.ports };
-      for (const id of ports) nextPorts[id] = defaultSwitchPortConfiguration();
-      return this.changeRunning({ ...running, ports: nextPorts });
+      const routedPorts = { ...(running.routedPorts ?? {}) };
+      for (const id of ports) {
+        nextPorts[id] = defaultSwitchPortConfiguration();
+        delete routedPorts[id];
+      }
+      return this.changeRunning({ ...running, ports: nextPorts, routedPorts });
     }
     if (command === "mac") return this.configureMac(args);
     if (command === "spanning-tree") return this.stpUnavailable();
@@ -336,6 +415,7 @@ export class SwitchTerminal {
 
   private executeGlobalNo(args: readonly string[]): SwitchTerminalResult {
     if (args[0]?.toLowerCase() === "mac") return this.removeStaticMac(args.slice(1));
+    if (args[0]?.toLowerCase() === "ip") return this.configureGlobalIp(args.slice(1), true);
     const subcommand = resolvePrefix(args[0] || "", ["vlan"]);
     if (subcommand.error) return this.error(subcommand.error);
     if (args.length !== 2) return this.incomplete();
@@ -362,36 +442,193 @@ export class SwitchTerminal {
       vlans,
       ports,
       staticMacEntries: running.staticMacEntries.filter((entry) => entry.vlanId !== vlanId),
+      ...(running.vlanInterfaces
+        ? { vlanInterfaces: running.vlanInterfaces.filter((item) => item.vlanId !== vlanId) }
+        : {}),
     });
     if (result.tone !== "error") this.networkSwitch.removeVlanMacEntries(vlanId);
     return result;
   }
 
+  private configureGlobalIp(args: readonly string[], negate = false): SwitchTerminalResult {
+    if (!this.networkSwitch.supportsLayer3) {
+      return this.error("% Les commandes IP de commutation nécessitent un Catalyst 3560.");
+    }
+    const target = resolvePrefix(args[0] || "", ["route", "routing"]);
+    if (target.error) return args.length === 0 ? this.incomplete() : this.error(target.error);
+    const running = this.networkSwitch.runningConfiguration;
+    if (target.value === "routing") {
+      if (args.length !== 1) return this.invalid();
+      return this.changeRunning({ ...running, ipRouting: !negate });
+    }
+    const routeArgs = args.slice(1);
+    if (negate) {
+      if (routeArgs.length !== 2 && routeArgs.length !== 3) return this.incomplete();
+    } else if (routeArgs.length !== 3) {
+      return this.error("% Usage: ip route <destination> <mask> <next-hop>");
+    }
+    try {
+      const network = validateIPv4Configuration({
+        address: routeArgs[0],
+        subnetMask: routeArgs[1],
+      });
+      const destination = getNetworkAddress(network.address, network.subnetMask);
+      const nextHop = routeArgs[2]
+        ? validateIPv4Configuration({
+            address: routeArgs[2],
+            subnetMask: "255.255.255.255",
+          }).address
+        : undefined;
+      const routes = [...(running.staticRoutes ?? [])];
+      const matching = (route: typeof routes[number]) =>
+        route.destination === destination
+        && route.subnetMask === network.subnetMask
+        && (!nextHop || route.nextHop === nextHop);
+      return this.changeRunning({
+        ...running,
+        staticRoutes: negate
+          ? routes.filter((route) => !matching(route))
+          : [
+              ...routes.filter((route) =>
+                route.destination !== destination || route.subnetMask !== network.subnetMask),
+              { destination, subnetMask: network.subnetMask, nextHop: nextHop! },
+            ],
+      });
+    } catch (error) {
+      return this.error(error instanceof Error ? error.message : "La route statique est invalide.");
+    }
+  }
+
+  private configureInterfaceIp(args: readonly string[], negate = false): SwitchTerminalResult {
+    if (!this.networkSwitch.supportsLayer3) {
+      return this.error("% Les adresses IPv4 de commutation nécessitent un Catalyst 3560.");
+    }
+    const address = resolvePrefix(args[0] || "", ["address"]);
+    if (address.error) return args.length === 0 ? this.incomplete() : this.error(address.error);
+    if (negate) {
+      if (args.length !== 1) return this.invalid();
+      if (this.selectedVlanId !== null) return this.updateSelectedVlanInterface({ ipv4: null });
+      if (this.selectedPorts.length !== 1) return this.error("% Sélectionnez un seul port routé.");
+      const portId = this.selectedPorts[0];
+      const running = this.networkSwitch.runningConfiguration;
+      if (running.ports[portId]?.switchport !== false) {
+        return this.error("% Configurez d’abord 'no switchport' sur ce port.");
+      }
+      const routedPorts = { ...(running.routedPorts ?? {}) };
+      delete routedPorts[portId];
+      return this.changeRunning({ ...running, routedPorts });
+    }
+    if (args.length !== 3) return this.error("% Usage: ip address <IPv4> <masque>");
+    let ipv4;
+    try {
+      ipv4 = validateIPv4Configuration({ address: args[1], subnetMask: args[2] });
+    } catch (error) {
+      return this.error(error instanceof Error ? error.message : "Adresse IPv4 invalide.");
+    }
+    if (this.selectedVlanId !== null) return this.updateSelectedVlanInterface({ ipv4 });
+    if (this.selectedPorts.length !== 1) return this.error("% Sélectionnez un seul port routé.");
+    const portId = this.selectedPorts[0];
+    const running = this.networkSwitch.runningConfiguration;
+    if (running.ports[portId]?.switchport !== false) {
+      return this.error("% Configurez d’abord 'no switchport' sur ce port.");
+    }
+    return this.changeRunning({
+      ...running,
+      routedPorts: { ...(running.routedPorts ?? {}), [portId]: ipv4 },
+    });
+  }
+
+  private resetSelectedPorts(): SwitchTerminalResult {
+    if (this.selectedPorts.length === 0) return this.error("% No interface is selected.");
+    const running = this.networkSwitch.runningConfiguration;
+    const ports = { ...running.ports };
+    const routedPorts = { ...(running.routedPorts ?? {}) };
+    this.selectedPorts.forEach((portId) => {
+      ports[portId] = defaultSwitchPortConfiguration();
+      delete routedPorts[portId];
+    });
+    return this.changeRunning({ ...running, ports, routedPorts });
+  }
+
+  private updateSelectedVlanInterface(
+    changes: Partial<NonNullable<SwitchRunningConfiguration["vlanInterfaces"]>[number]>,
+  ): SwitchTerminalResult {
+    if (this.selectedVlanId === null) return this.error("% Aucune interface VLAN n’est sélectionnée.");
+    const running = this.networkSwitch.runningConfiguration;
+    const vlanInterfaces = (running.vlanInterfaces ?? []).map((item) =>
+      item.vlanId === this.selectedVlanId ? { ...item, ...changes } : item);
+    if (!vlanInterfaces.some((item) => item.vlanId === this.selectedVlanId)) {
+      return this.error("% Interface VLAN inexistante.");
+    }
+    return this.changeRunning({ ...running, vlanInterfaces });
+  }
+
+  private setSelectedPortSwitchport(enabled: boolean): SwitchTerminalResult {
+    if (!this.networkSwitch.supportsLayer3) {
+      return this.error("% no switchport nécessite un Catalyst 3560.");
+    }
+    if (this.selectedPorts.length !== 1) {
+      return this.error("% Configurez un seul port à la fois.");
+    }
+    const portId = this.selectedPorts[0];
+    const running = this.networkSwitch.runningConfiguration;
+    const current = running.ports[portId];
+    if (current.switchport === enabled) return this.info("Aucune modification nécessaire.");
+    const ports = {
+      ...running.ports,
+      [portId]: {
+        ...current,
+        switchport: enabled,
+        mode: "access" as const,
+        accessVlan: 1,
+        nativeVlan: 1,
+        allowedVlans: "all" as const,
+      },
+    };
+    const routedPorts = { ...(running.routedPorts ?? {}) };
+    delete routedPorts[portId];
+    return this.changeRunning({
+      ...running,
+      ports,
+      routedPorts,
+      ...(enabled
+        ? {}
+        : {
+            staticMacEntries: running.staticMacEntries.filter((entry) =>
+              entry.portInterfaceId !== portId),
+          }),
+    });
+  }
+
   private executeInterface(command: string, args: readonly string[]): SwitchTerminalResult {
     if (command === "end") {
       this.mode = "privileged";
+      this.selectedPorts = [];
+      this.selectedVlanId = null;
       return this.info("Retour au mode privilégié.");
     }
     if (command === "exit") {
       this.mode = "global";
       this.selectedPorts = [];
+      this.selectedVlanId = null;
       return this.info("Retour au mode de configuration globale.");
     }
     if (command === "spanning-tree") return this.stpUnavailable();
     if (command === "default") {
       const target = resolvePrefix(args[0] || "", ["interface"]);
       if (target.error || args.length !== 1) return this.incomplete();
-      const running = this.networkSwitch.runningConfiguration;
-      const ports = { ...running.ports };
-      for (const id of this.selectedPorts) ports[id] = defaultSwitchPortConfiguration();
-      return this.changeRunning({ ...running, ports });
+      return this.resetSelectedPorts();
     }
     if (command === "description") {
       const description = args.join(" ");
+      if (this.selectedVlanId !== null) {
+        return this.updateSelectedVlanInterface({ description });
+      }
       return this.updateSelectedPorts({ description });
     }
     if (command === "shutdown") {
       if (args.length) return this.invalid();
+      if (this.selectedVlanId !== null) return this.updateSelectedVlanInterface({ enabled: false });
       return this.updateSelectedPorts({ enabled: false });
     }
     if (command === "speed") {
@@ -418,21 +655,28 @@ export class SwitchTerminal {
       return this.updateSelectedPorts({ duplex: duplexValues[args[0].toLowerCase()] });
     }
     if (command === "no") return this.executeInterfaceNo(args);
+    if (command === "ip") return this.configureInterfaceIp(args);
     if (command === "switchport") return this.configureSwitchport(args);
     return this.invalid();
   }
 
   private executeInterfaceNo(args: readonly string[]): SwitchTerminalResult {
-    const subcommand = resolvePrefix(args[0] || "", ["shutdown", "switchport"]);
+    const subcommand = resolvePrefix(args[0] || "", ["ip", "shutdown", "switchport"]);
     if (subcommand.error) return this.error(subcommand.error);
     if (subcommand.value === "shutdown" && args.length === 1) {
+      if (this.selectedVlanId !== null) return this.updateSelectedVlanInterface({ enabled: true });
       return this.updateSelectedPorts({ enabled: true });
     }
+    if (subcommand.value === "ip") return this.configureInterfaceIp(args.slice(1), true);
     if (subcommand.value === "switchport") return this.configureSwitchport(args.slice(1), true);
     return this.incomplete();
   }
 
   private configureSwitchport(args: readonly string[], negate = false): SwitchTerminalResult {
+    if (args.length === 0) return this.setSelectedPortSwitchport(!negate);
+    if (this.selectedPorts.some((id) => !this.networkSwitch.getPortConfiguration(id).switchport)) {
+      return this.error("% The selected interface is a routed port; use 'switchport' first.");
+    }
     const first = resolvePrefix(args[0] || "", ["access", "mode", "trunk"]);
     if (first.error) return this.error(first.error);
     if (first.value === "mode") {
@@ -561,7 +805,7 @@ export class SwitchTerminal {
 
   private show(args: readonly string[]): SwitchTerminalResult {
     if (args.length === 0) return this.incomplete();
-    const first = resolvePrefix(args[0], ["interfaces", "ip", "mac", "running-config", "spanning-tree", "startup-config", "version", "vlan"]);
+    const first = resolvePrefix(args[0], ["arp", "interfaces", "ip", "mac", "running-config", "spanning-tree", "startup-config", "version", "vlan"]);
     if (first.error) return this.error(first.error);
     if (first.value === "spanning-tree") return this.stpUnavailable();
     if (first.value === "running-config") {
@@ -570,6 +814,14 @@ export class SwitchTerminal {
       }
       const target = resolvePrefix(args[1] || "", ["interface"]);
       if (target.error || args.length !== 3) return this.invalid();
+      if (args[2].toLowerCase().startsWith("vlan")) {
+        const vlanId = parseVlanId(args[2].slice(4));
+        if (!vlanId || !this.networkSwitch.supportsLayer3) return this.error("% Interface VLAN inconnue.");
+        return this.normal(this.renderVlanInterfaceConfiguration(
+          vlanId,
+          this.networkSwitch.runningConfiguration,
+        ));
+      }
       const portIds = this.resolvePorts([args[2]]);
       if (!portIds || portIds.length !== 1) return this.error("% Interface inconnue.");
       return this.normal(this.renderInterfaceConfiguration(
@@ -586,7 +838,7 @@ export class SwitchTerminal {
     }
     if (first.value === "version") {
       return args.length === 1
-        ? this.normal(`PocketNet Virtual Switch Software\n${this.networkSwitch.runningConfiguration.hostname} · moteur Layer 2 pédagogique`)
+        ? this.normal(`PocketNet Virtual Switch Software\n${this.networkSwitch.runningConfiguration.hostname} · moteur Layer ${this.networkSwitch.supportsLayer3 ? "3" : "2"} pédagogique`)
         : this.invalid();
     }
     if (first.value === "vlan") {
@@ -605,11 +857,29 @@ export class SwitchTerminal {
     }
     if (first.value === "interfaces") return this.showInterfaces(args.slice(1));
     if (first.value === "ip") return this.showIp(args.slice(1));
+    if (first.value === "arp") return this.showArp(args.slice(1));
     if (first.value === "mac") return this.showMacTable(args.slice(1));
     return this.invalid();
   }
 
   private showInterfaces(args: readonly string[]): SwitchTerminalResult {
+    if (args[0]?.toLowerCase() === "vlan") {
+      if (args.length > 2) {
+        return this.error("% Les interfaces VLAN Layer 3 ne sont pas disponibles.");
+      }
+      const vlanId = args[1] ? parseVlanId(args[1]) : undefined;
+      if (args.length === 2 && !vlanId) return this.error("% Invalid VLAN.");
+      if (!this.networkSwitch.supportsLayer3) {
+        return vlanId
+          ? this.normal(`Vlan${vlanId} is not configured as a management interface.`)
+          : this.normal("No VLAN management interfaces are configured.");
+      }
+      const interfaces = (this.options.getLayer3Interfaces?.() ?? [])
+        .filter((item) => item.name.startsWith("Vlan"))
+        .filter((item) => !vlanId || item.name === `Vlan${vlanId}`);
+      if (interfaces.length === 0) return this.error("% Aucune interface VLAN configurée.");
+      return this.normal(this.renderLayer3Interfaces(interfaces));
+    }
     if (args.length === 0) return this.normal(this.renderPortStatus());
     if (args.length === 1) {
       const status = resolvePrefix(args[0], ["counters", "description", "status", "trunk"]);
@@ -630,14 +900,6 @@ export class SwitchTerminal {
         ? this.error(errors.error)
         : this.normal(this.renderInterfaceCounters(true));
     }
-    if (args.length === 2 && args[0].toLowerCase() === "vlan") {
-      const vlanId = parseVlanId(args[1]);
-      if (!vlanId) return this.error("% Invalid VLAN.");
-      if (!this.networkSwitch.runningConfiguration.vlans.some((vlan) => vlan.id === vlanId)) {
-        return this.error("% VLAN does not exist.");
-      }
-      return this.normal(`Vlan${vlanId} is not configured as a management interface.`);
-    }
     if (args.length === 2) {
       const portIds = this.resolvePorts([args[0]]);
       const switchport = resolvePrefix(args[1], ["switchport"]);
@@ -648,10 +910,43 @@ export class SwitchTerminal {
   }
 
   private showIp(args: readonly string[]): SwitchTerminalResult {
-    const ip = resolvePrefix(args[0] || "", ["interface"]);
+    const target = resolvePrefix(args[0] || "", ["arp", "interface", "route"]);
+    if (target.error) return args.length === 0 ? this.incomplete() : this.error(target.error);
+    if (!this.networkSwitch.supportsLayer3) {
+      return target.value === "interface"
+        && args.length === 2
+        && !resolvePrefix(args[1], ["brief"]).error
+        ? this.normal("No VLAN management interfaces are configured.")
+        : this.error("% Les diagnostics IP nécessitent un Catalyst 3560.");
+    }
+    if (target.value === "arp") return args.length === 1 ? this.showArp([]) : this.invalid();
+    if (target.value === "route") {
+      if (args.length !== 1) return this.invalid();
+      if (!this.networkSwitch.runningConfiguration.ipRouting) {
+        return this.normal("IP routing is disabled.");
+      }
+      const routes = this.options.getRouteEntries?.() ?? [];
+      return this.normal(routes.length ? this.renderRoutes(routes) : "No active routes.");
+    }
     const brief = resolvePrefix(args[1] || "", ["brief"]);
-    if (args.length !== 2 || ip.error || brief.error) return this.invalid();
-    return this.normal("No VLAN management interfaces are configured.");
+    if (args.length !== 2 || brief.error) return this.invalid();
+    const interfaces = this.options.getLayer3Interfaces?.() ?? [];
+    return this.normal(interfaces.length
+      ? this.renderLayer3Interfaces(interfaces)
+      : "No Layer 3 interfaces are configured.");
+  }
+
+  private showArp(args: readonly string[]): SwitchTerminalResult {
+    if (args.length !== 0) return this.invalid();
+    if (!this.networkSwitch.supportsLayer3) {
+      return this.error("% La table ARP nécessite un Catalyst 3560.");
+    }
+    const entries = this.options.getArpEntries?.() ?? [];
+    return this.normal([
+      "Protocol  Address          Hardware Address",
+      ...entries.map((entry) =>
+        `Internet  ${entry.ipAddress.padEnd(16)} ${entry.macAddress}`),
+    ].join("\n"));
   }
 
   private showMacTable(args: readonly string[]): SwitchTerminalResult {
@@ -847,7 +1142,7 @@ export class SwitchTerminal {
         const ports = this.networkSwitch.portInterfaceIds
           .filter((id) => {
             const port = this.networkSwitch.getPortConfiguration(id);
-            return port.mode === "access" && port.accessVlan === vlan.id;
+            return port.switchport && port.mode === "access" && port.accessVlan === vlan.id;
           })
           .map((id) => this.networkSwitch.getPortName(id))
           .join(", ");
@@ -864,8 +1159,9 @@ export class SwitchTerminal {
       const port = this.networkSwitch.getPortConfiguration(id);
       const name = this.networkSwitch.getPortName(id);
       const linked = this.networkSwitch.isPortOperational(id);
+      const mode = port.switchport ? port.mode : "routed";
       rows.push(
-        `${name.padEnd(8)} ${(linked ? "connected" : port.enabled ? "notconnect" : "disabled").padEnd(11)} ${port.mode.padEnd(6)} ${String(port.mode === "access" ? port.accessVlan : "trunk").padEnd(5)} ${String(port.speedMbps).padEnd(6)} ${port.duplex}`,
+        `${name.padEnd(8)} ${(linked ? "connected" : port.enabled ? "notconnect" : "disabled").padEnd(11)} ${mode.padEnd(6)} ${String(!port.switchport ? "-" : port.mode === "access" ? port.accessVlan : "trunk").padEnd(5)} ${String(port.speedMbps).padEnd(6)} ${port.duplex}`,
       );
     }
     return rows.join("\n");
@@ -877,18 +1173,21 @@ export class SwitchTerminal {
     const operational = this.networkSwitch.isPortOperational(portInterfaceId);
     const counters = this.networkSwitch.getPortCounters(portInterfaceId);
     const address = this.networkSwitch.getPortMacAddress(portInterfaceId) ?? "unknown";
-    const vlanDetails = port.mode === "access"
-      ? [`Access VLAN: ${port.accessVlan}`]
-      : [
-          `Native VLAN: ${port.nativeVlan}`,
-          `Allowed VLANs: ${port.allowedVlans === "all" ? "all" : port.allowedVlans.join(",")}`,
-        ];
+    const ipv4 = this.networkSwitch.runningConfiguration.routedPorts?.[portInterfaceId];
+    const vlanDetails = !port.switchport
+      ? ["Switchport: disabled", `IPv4 address: ${ipv4 ? `${ipv4.address} ${ipv4.subnetMask}` : "unassigned"}`]
+      : port.mode === "access"
+        ? [`Access VLAN: ${port.accessVlan}`]
+        : [
+            `Native VLAN: ${port.nativeVlan}`,
+            `Allowed VLANs: ${port.allowedVlans === "all" ? "all" : port.allowedVlans.join(",")}`,
+          ];
     const speed = port.speedMbps === "auto" ? "auto" : `${port.speedMbps} Mbps`;
     return [
       `${name} is ${operational ? "up" : "down"} (${port.enabled ? "administratively up" : "administratively down"})`,
       `  Hardware address: ${address}`,
       `  Description: ${port.description || "aucune"}`,
-      `  Switchport mode: ${port.mode}`,
+      `Switchport mode: ${port.switchport ? port.mode : "routed"}`,
       ...vlanDetails.map((detail) => `  ${detail}`),
       `  Speed: ${speed}`,
       `  Duplex: ${port.duplex}`,
@@ -899,6 +1198,13 @@ export class SwitchTerminal {
 
   private renderSwitchportDetails(portInterfaceId: InterfaceId): string {
     const port = this.networkSwitch.getPortConfiguration(portInterfaceId);
+    if (!port.switchport) {
+      return [
+        `Name: ${this.networkSwitch.getPortName(portInterfaceId)}`,
+        "Switchport: Disabled",
+        "Operational Status: routed",
+      ].join("\n");
+    }
     const vlanDetails = port.mode === "access"
       ? `Access Mode VLAN: ${port.accessVlan}`
       : [
@@ -947,6 +1253,41 @@ export class SwitchTerminal {
   ): string {
     return ["Building configuration...", ...this.renderPortConfiguration(portInterfaceId, running)]
       .join("\n");
+  }
+
+  private renderLayer3Interfaces(
+    interfaces: ReturnType<NonNullable<SwitchTerminalOptions["getLayer3Interfaces"]>>,
+  ): string {
+    return [
+      "Interface  IP-Address       Status      Protocol",
+      ...interfaces.map((item) =>
+        `${item.name.padEnd(10)} ${item.address.padEnd(16)} ${item.status.padEnd(11)} ${item.protocol}`),
+    ].join("\n");
+  }
+
+  private renderRoutes(
+    routes: ReturnType<NonNullable<SwitchTerminalOptions["getRouteEntries"]>>,
+  ): string {
+    return [
+      "Codes: C - connected, S - static",
+      "Network          Gateway          Interface  Metric",
+      ...routes.map((route) =>
+        `${route.gateway === "On-link" ? "C" : "S"} ${route.destination.padEnd(16)} ${route.gateway.padEnd(16)} ${route.interfaceName.padEnd(10)} ${route.metric}`),
+    ].join("\n");
+  }
+
+  private renderVlanInterfaceConfiguration(
+    vlanId: number,
+    running: SwitchRunningConfiguration,
+  ): string {
+    const svi = (running.vlanInterfaces ?? []).find((item) => item.vlanId === vlanId);
+    if (!svi) return "% Interface VLAN not found.";
+    return [
+      `interface Vlan${vlanId}`,
+      svi.description ? ` description ${svi.description}` : "",
+      svi.ipv4 ? ` ip address ${svi.ipv4.address} ${svi.ipv4.subnetMask}` : "",
+      svi.enabled ? "" : " shutdown",
+    ].filter((line) => line !== "").join("\n");
   }
 
   private renderTrunks(): string {
@@ -1001,6 +1342,14 @@ export class SwitchTerminal {
       ` name ${vlan.name}`,
     ));
     rows.push(`mac address-table aging-time ${running.macAgingTimeSeconds}`);
+    if (this.networkSwitch.supportsLayer3) {
+      rows.push(running.ipRouting ? "ip routing" : "no ip routing");
+      (running.staticRoutes ?? []).forEach((route) => rows.push(
+        `ip route ${route.destination} ${route.subnetMask} ${route.nextHop}`,
+      ));
+      (running.vlanInterfaces ?? []).forEach((svi) =>
+        rows.push(...this.renderVlanInterfaceConfiguration(svi.vlanId, running).split("\n")));
+    }
     running.staticMacEntries.forEach((entry) => rows.push(
       `mac address-table static ${entry.macAddress} vlan ${entry.vlanId} interface ${this.networkSwitch.getPortName(entry.portInterfaceId)}`,
     ));
@@ -1022,16 +1371,18 @@ export class SwitchTerminal {
   ): string[] {
     const port = running.ports[portInterfaceId];
     if (!port) return [];
+    const ipv4 = running.routedPorts?.[portInterfaceId];
     return [
       `interface ${this.networkSwitch.getPortName(portInterfaceId)}`,
       port.description ? ` description ${port.description}` : "",
       port.enabled ? "" : " shutdown",
-      ` switchport mode ${port.mode}`,
-      port.mode === "access" ? ` switchport access vlan ${port.accessVlan}` : "",
-      port.mode === "trunk" ? ` switchport trunk native vlan ${port.nativeVlan}` : "",
-      port.mode === "trunk"
+      port.switchport ? ` switchport mode ${port.mode}` : " no switchport",
+      port.switchport && port.mode === "access" ? ` switchport access vlan ${port.accessVlan}` : "",
+      port.switchport && port.mode === "trunk" ? ` switchport trunk native vlan ${port.nativeVlan}` : "",
+      port.switchport && port.mode === "trunk"
         ? ` switchport trunk allowed vlan ${port.allowedVlans === "all" ? "all" : port.allowedVlans.join(",")}`
         : "",
+      ipv4 ? ` ip address ${ipv4.address} ${ipv4.subnetMask}` : "",
       ` speed ${port.speedMbps}`,
       ` duplex ${port.duplex}`,
     ].filter((row) => row !== "");
@@ -1048,7 +1399,10 @@ export class SwitchTerminal {
       "show interfaces description",
       "show interfaces status",
       "show interfaces trunk",
+      "show arp",
       "show ip interface brief",
+      "show ip route",
+      "show ip arp",
       "show vlan id",
       "show vlan name",
       "show mac address-table count",
@@ -1096,6 +1450,9 @@ export class SwitchTerminal {
       return [
         ...base,
         "interface range",
+        "interface vlan",
+        "ip routing",
+        "ip route",
         "mac address-table aging-time",
         ...this.networkSwitch.portInterfaceIds.map((id) =>
           `interface ${this.networkSwitch.getPortName(id)}`),
@@ -1104,6 +1461,9 @@ export class SwitchTerminal {
     if (this.mode === "interface") {
       return [
         ...base,
+        "ip address",
+        "no ip address",
+        "no switchport",
         "switchport mode access",
         "switchport mode trunk",
         "switchport access vlan",

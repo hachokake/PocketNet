@@ -3,9 +3,10 @@ export const CANVAS_HEIGHT = 1100;
 export const DEVICE_WIDTH = 184;
 export const DEVICE_HEIGHT = 160;
 
-const DEVICE_KINDS = ["pc", "laptop", "switch", "router", "server", "access-point"];
+const DEVICE_KINDS = ["pc", "laptop", "switch", "layer3-switch", "router", "server", "access-point"];
 const DEFAULT_MASK = "255.255.255.0";
 const CATALYST_2960_MODEL = "catalyst-2960";
+const CATALYST_3560_MODEL = "catalyst-3560";
 const CATALYST_2960_DEFAULT_VLANS = [
   { id: 1, name: "default", status: "active" },
   { id: 1002, name: "fddi-default", status: "active" },
@@ -15,7 +16,7 @@ const CATALYST_2960_DEFAULT_VLANS = [
 ];
 
 function defaultVlansForModel(model) {
-  if (model !== CATALYST_2960_MODEL) {
+  if (model !== CATALYST_2960_MODEL && model !== CATALYST_3560_MODEL) {
     throw new Error(`Le modèle de commutateur ${String(model)} n’est pas pris en charge.`);
   }
   return CATALYST_2960_DEFAULT_VLANS;
@@ -24,6 +25,7 @@ function defaultVlansForModel(model) {
 function defaultSwitchPortConfiguration() {
   return {
     enabled: true,
+    switchport: true,
     mode: "access",
     accessVlan: 1,
     nativeVlan: 1,
@@ -34,20 +36,46 @@ function defaultSwitchPortConfiguration() {
   };
 }
 
+function validateSwitchIPv4Configuration(configuration) {
+  const normalizeAddress = (address) => {
+    const octets = address.split(".");
+    if (
+      octets.length !== 4
+      || octets.some((octet) => !/^\d{1,3}$/.test(octet) || Number(octet) > 255)
+    ) {
+      throw new Error(`Adresse IPv4 invalide : ${address}.`);
+    }
+    return octets.map(Number).join(".");
+  };
+  const address = normalizeAddress(configuration.address);
+  const subnetMask = normalizeAddress(configuration.subnetMask);
+  const maskBits = subnetMask.split(".")
+    .map((octet) => Number(octet).toString(2).padStart(8, "0"))
+    .join("");
+  if (!/^1*0*$/.test(maskBits)) {
+    throw new Error(`Masque de sous-réseau non contigu : ${subnetMask}.`);
+  }
+  return { address, subnetMask };
+}
+
 export function createDefaultSwitchConfiguration(hostname, interfaces, model = CATALYST_2960_MODEL) {
+  const running = {
+    hostname,
+    vlans: defaultVlansForModel(model).map((vlan) => ({ ...vlan })),
+    ports: Object.fromEntries(interfaces.map((networkInterface) => [
+      networkInterface.id,
+      defaultSwitchPortConfiguration(),
+    ])),
+    staticMacEntries: [],
+    macAgingTimeSeconds: 300,
+    consoleLine: { loginRequired: false, password: "" },
+    ...(model === CATALYST_3560_MODEL
+      ? { ipRouting: false, vlanInterfaces: [], routedPorts: {}, staticRoutes: [] }
+      : {}),
+  };
   return {
     model,
-    running: {
-      hostname,
-      vlans: defaultVlansForModel(model).map((vlan) => ({ ...vlan })),
-      ports: Object.fromEntries(interfaces.map((networkInterface) => [
-        networkInterface.id,
-        defaultSwitchPortConfiguration(),
-      ])),
-      staticMacEntries: [],
-      macAgingTimeSeconds: 300,
-      consoleLine: { loginRequired: false, password: "" },
-    },
+    running,
     startup: null,
   };
 }
@@ -93,6 +121,7 @@ function normalizeSwitchRunningConfiguration(value, fallback, hostname, interfac
     const port = value.ports[networkInterface.id] || defaultSwitchPortConfiguration();
     if (
       typeof port.enabled !== "boolean"
+      || (port.switchport !== undefined && typeof port.switchport !== "boolean")
       || !["access", "trunk"].includes(port.mode)
       || !Number.isInteger(port.accessVlan)
       || !Number.isInteger(port.nativeVlan)
@@ -113,6 +142,7 @@ function normalizeSwitchRunningConfiguration(value, fallback, hostname, interfac
     }
     return [networkInterface.id, {
       ...port,
+      switchport: port.switchport ?? true,
       allowedVlans: port.allowedVlans === "all" ? "all" : [...new Set(port.allowedVlans)],
     }];
   }));
@@ -136,6 +166,7 @@ function normalizeSwitchRunningConfiguration(value, fallback, hostname, interfac
       || !Number.isInteger(entry.vlanId)
       || !vlanIds.has(entry.vlanId)
       || !interfaces.some((networkInterface) => networkInterface.id === entry.portInterfaceId)
+      || ports[entry.portInterfaceId]?.switchport === false
     ) {
       throw new Error("Une entrée MAC statique enregistrée est invalide.");
     }
@@ -154,6 +185,19 @@ function normalizeSwitchRunningConfiguration(value, fallback, hostname, interfac
   ) {
     throw new Error("Le délai de vieillissement MAC doit être 0 ou compris entre 10 et 1000000 secondes.");
   }
+  const layer3Configuration = model === CATALYST_3560_MODEL
+    ? normalizeLayer3Configuration(value, vlanIds, interfaces, ports)
+    : undefined;
+  if (
+    model === CATALYST_2960_MODEL
+    && (value.ipRouting !== undefined
+      || value.vlanInterfaces !== undefined
+      || value.routedPorts !== undefined
+      || value.staticRoutes !== undefined
+      || Object.values(ports).some((port) => !port.switchport))
+  ) {
+    throw new Error("Les fonctions Layer 3 nécessitent un Catalyst 3560.");
+  }
   return {
     hostname: value.hostname.trim(),
     vlans,
@@ -161,15 +205,97 @@ function normalizeSwitchRunningConfiguration(value, fallback, hostname, interfac
     staticMacEntries: normalizedStaticMacEntries,
     macAgingTimeSeconds,
     consoleLine: { ...consoleLine },
+    ...(layer3Configuration ?? {}),
   };
 }
 
-export function normalizeSwitchConfiguration(value, hostname, interfaces) {
+function normalizeLayer3Configuration(value, vlanIds, interfaces, ports) {
+  const ipRouting = value.ipRouting ?? false;
+  if (typeof ipRouting !== "boolean") {
+    throw new Error("L’état du routage IPv4 est invalide.");
+  }
+
+  if (
+    !Array.isArray(value.vlanInterfaces ?? [])
+    || !Array.isArray(value.staticRoutes ?? [])
+    || (value.routedPorts !== undefined
+      && (!value.routedPorts || typeof value.routedPorts !== "object" || Array.isArray(value.routedPorts)))
+  ) {
+    throw new Error("La configuration Layer 3 du commutateur est invalide.");
+  }
+  const vlanInterfaces = (value.vlanInterfaces ?? []).map((svi) => {
+    if (
+      !svi
+      || !Number.isInteger(svi.vlanId)
+      || !vlanIds.has(svi.vlanId)
+      || typeof svi.enabled !== "boolean"
+      || (svi.description !== undefined && typeof svi.description !== "string")
+    ) {
+      throw new Error("Une interface VLAN est invalide ou référence un VLAN inexistant.");
+    }
+    return {
+      vlanId: svi.vlanId,
+      enabled: svi.enabled,
+      description: svi.description ?? "",
+      ipv4: svi.ipv4 ? validateSwitchIPv4Configuration(svi.ipv4) : null,
+    };
+  });
+  if (new Set(vlanInterfaces.map((svi) => svi.vlanId)).size !== vlanInterfaces.length) {
+    throw new Error("Les interfaces VLAN doivent avoir des identifiants uniques.");
+  }
+
+  const interfaceIds = new Set(interfaces.map((networkInterface) => networkInterface.id));
+  const routedPorts = {};
+  Object.entries(value.routedPorts ?? {}).forEach(([interfaceId, ipv4]) => {
+    if (!interfaceIds.has(interfaceId) || ports[interfaceId]?.switchport !== false) {
+      throw new Error(`L’interface routée ${interfaceId} n’est pas un port Layer 3.`);
+    }
+    routedPorts[interfaceId] = validateSwitchIPv4Configuration(ipv4);
+  });
+  const addresses = [
+    ...vlanInterfaces.flatMap((svi) => svi.ipv4 ? [svi.ipv4.address] : []),
+    ...Object.values(routedPorts).map((ipv4) => ipv4.address),
+  ];
+  if (new Set(addresses).size !== addresses.length) {
+    throw new Error("Une adresse IPv4 est configurée sur plusieurs interfaces du commutateur.");
+  }
+
+  const staticRoutes = (value.staticRoutes ?? []).map((route) => {
+    if (!route) throw new Error("Une route statique est invalide.");
+    const ipv4 = validateSwitchIPv4Configuration({
+      address: route.destination,
+      subnetMask: route.subnetMask,
+    });
+    const address = ipv4.address.split(".").map(Number);
+    const mask = ipv4.subnetMask.split(".").map(Number);
+    const destination = address.map((octet, index) => octet & mask[index]).join(".");
+    return {
+      destination,
+      subnetMask: ipv4.subnetMask,
+      nextHop: validateSwitchIPv4Configuration({
+        address: route.nextHop,
+        subnetMask: "255.255.255.255",
+      }).address,
+    };
+  });
+  const routeKeys = staticRoutes.map((route) => `${route.destination}/${route.subnetMask}`);
+  if (new Set(routeKeys).size !== routeKeys.length) {
+    throw new Error("La configuration contient des routes statiques dupliquées.");
+  }
+  return { ipRouting, vlanInterfaces, routedPorts, staticRoutes };
+}
+
+export function normalizeSwitchConfiguration(
+  value,
+  hostname,
+  interfaces,
+  defaultModel = CATALYST_2960_MODEL,
+) {
   if (value === undefined || value === null) {
-    return createDefaultSwitchConfiguration(hostname, interfaces);
+    return createDefaultSwitchConfiguration(hostname, interfaces, defaultModel);
   }
   if (typeof value !== "object") throw new Error("La configuration persistante du commutateur est invalide.");
-  const model = value.model ?? CATALYST_2960_MODEL;
+  const model = value.model ?? defaultModel;
   const fallback = createDefaultSwitchConfiguration(hostname, interfaces, model);
   const running = normalizeSwitchRunningConfiguration(value.running, fallback, hostname, interfaces, model);
   const startup = value.startup === undefined || value.startup === null
@@ -238,6 +364,7 @@ export function normalizeTopology(value, macFactory = generateLocalMacAddress) {
       throw new Error("Un équipement enregistré est invalide.");
     }
 
+    const isSwitch = device.kind === "switch" || device.kind === "layer3-switch";
     const normalizedInterfaces = device.interfaces.map((networkInterface) => {
       if (
         !networkInterface
@@ -261,7 +388,7 @@ export function normalizeTopology(value, macFactory = generateLocalMacAddress) {
       } else {
         usedMacAddresses.add(macAddress);
       }
-      const legacySwitchPort = device.kind === "switch"
+      const legacySwitchPort = isSwitch
         ? /^port([1-9]\d*)$/.exec(networkInterface.name)
         : null;
       return {
@@ -270,10 +397,23 @@ export function normalizeTopology(value, macFactory = generateLocalMacAddress) {
         macAddress,
       };
     });
-    const switchConfig = device.kind === "switch"
-      ? normalizeSwitchConfiguration(device.switchConfig, device.name, normalizedInterfaces)
+    const switchConfig = isSwitch
+      ? normalizeSwitchConfiguration(
+          device.switchConfig,
+          device.name,
+          normalizedInterfaces,
+          device.kind === "layer3-switch" ? CATALYST_3560_MODEL : CATALYST_2960_MODEL,
+        )
       : undefined;
-    if (device.kind === "switch" && !device.switchConfig) {
+    if (
+      switchConfig
+      && switchConfig.model !== (
+        device.kind === "layer3-switch" ? CATALYST_3560_MODEL : CATALYST_2960_MODEL
+      )
+    ) {
+      throw new Error("Le modèle de commutateur ne correspond pas au type d’équipement.");
+    }
+    if (isSwitch && !device.switchConfig) {
       switchConfig.running = {
         ...switchConfig.running,
         ports: Object.fromEntries(normalizedInterfaces.map((networkInterface) => [
@@ -288,7 +428,7 @@ export function normalizeTopology(value, macFactory = generateLocalMacAddress) {
 
     return {
       ...device,
-      ...(device.kind === "switch"
+      ...(isSwitch
         ? { switchConfig }
         : {}),
       ...(device.kind === "pc" || device.kind === "laptop"
@@ -299,7 +439,7 @@ export function normalizeTopology(value, macFactory = generateLocalMacAddress) {
             icmpEnabled: device.icmpEnabled !== false,
           }
         : {}),
-      interfaces: device.kind === "switch"
+      interfaces: isSwitch
         ? normalizedInterfaces.map((networkInterface) => ({ ...networkInterface, enabled: true }))
         : normalizedInterfaces,
     };
@@ -355,7 +495,7 @@ function createInterfaces(id, kind, portCount, usedMacAddresses, macFactory) {
   return Array.from({ length: count }, (_, index) => {
     const name = kind === "router"
       ? `g0/${index}`
-      : kind === "switch"
+      : kind === "switch" || kind === "layer3-switch"
         ? `Fa0/${index + 1}`
         : `eth${index}`;
     return {
@@ -390,6 +530,7 @@ export function addDevice(
     pc: "PC",
     laptop: "Laptop",
     switch: "Switch",
+    "layer3-switch": "SwitchL3",
     router: "Routeur",
     server: "Serveur",
     "access-point": "AP",
@@ -401,7 +542,9 @@ export function addDevice(
   while (topology.devices.some((device) => device.kind === kind && device.name === `${label}${number}`)) {
     number += 1;
   }
-  const portCount = kind === "switch" ? 8 : ["router", "server"].includes(kind) ? 4 : 1;
+  const portCount = kind === "switch" || kind === "layer3-switch"
+    ? 8
+    : ["router", "server"].includes(kind) ? 4 : 1;
   const interfaces = createInterfaces(id, kind, portCount, usedMacAddresses, macFactory);
   const device = {
     id,
@@ -413,8 +556,14 @@ export function addDevice(
     ...(kind === "pc" || kind === "laptop"
       ? { defaultGateway: "", dnsServer: "", dhcpEnabled: false, icmpEnabled: true }
       : {}),
-    ...(kind === "switch"
-      ? { switchConfig: createDefaultSwitchConfiguration(`${label}${number}`, interfaces) }
+    ...(kind === "switch" || kind === "layer3-switch"
+      ? {
+          switchConfig: createDefaultSwitchConfiguration(
+            `${label}${number}`,
+            interfaces,
+            kind === "layer3-switch" ? CATALYST_3560_MODEL : CATALYST_2960_MODEL,
+          ),
+        }
       : {}),
     interfaces,
   };

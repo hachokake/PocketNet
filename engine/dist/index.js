@@ -10,7 +10,7 @@ export { SimulatedHost } from "./lab/SimulatedHost.js";
 export { ComputerTerminal } from "./lab/ComputerTerminal.js";
 export { SwitchTerminal } from "./lab/SwitchTerminal.js";
 export { TopologySimulation } from "./lab/TopologySimulation.js";
-export { CATALYST_2960_MODEL, createDefaultSwitchConfiguration, defaultSwitchPortConfiguration, isReservedVlanId, isVlanAllowed, normalizeSwitchConfiguration, } from "./protocols/ethernet/SwitchConfiguration.js";
+export { CATALYST_2960_MODEL, CATALYST_3560_MODEL, createDefaultSwitchConfiguration, defaultSwitchPortConfiguration, isReservedVlanId, isVlanAllowed, normalizeSwitchConfiguration, } from "./protocols/ethernet/SwitchConfiguration.js";
 export { ArpCache, ETHERNET_BROADCAST_MAC, generateLocalMacAddress, normalizeMacAddress, } from "./protocols/arp/arp.js";
 export { EthernetSwitch } from "./protocols/ethernet/EthernetSwitch.js";
 export { DEFAULT_IPV4_TTL, validateIPv4Ttl, } from "./protocols/ethernet/ethernet.js";

@@ -57,6 +57,7 @@ export type {
 } from "./lab/TopologySimulation.js";
 export {
   CATALYST_2960_MODEL,
+  CATALYST_3560_MODEL,
   createDefaultSwitchConfiguration,
   defaultSwitchPortConfiguration,
   isReservedVlanId,
@@ -70,7 +71,9 @@ export type {
   SwitchPortConfiguration,
   SwitchPortMode,
   SwitchRunningConfiguration,
+  SwitchStaticRouteConfiguration,
   SwitchVlan,
+  SwitchVlanInterfaceConfiguration,
 } from "./protocols/ethernet/SwitchConfiguration.js";
 export {
   ArpCache,

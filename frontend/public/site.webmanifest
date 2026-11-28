@@ -1,14 +1,16 @@
 {
   "name": "PocketNet",
   "short_name": "PocketNet",
+  "id": "/",
   "description": "Simulateur interactif de réseaux informatiques.",
   "lang": "fr-FR",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#FFFFFF",
+  "background_color": "#1E3A8A",
   "theme_color": "#1E3A8A",
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/static/brand/pocketnet-192.png",

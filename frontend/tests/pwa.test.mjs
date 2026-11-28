@@ -4,6 +4,7 @@ import {
   INSTALL_DISMISSAL_DURATION_MS,
   INSTALL_DISMISSAL_KEY,
   dismissInstallInvitation,
+  getInstallGuide,
   isAppleMobileDevice,
   isStandaloneMode,
   wasInstallDismissed,
@@ -43,6 +44,25 @@ test("detects installed standalone and Apple mobile presentations", () => {
     platform: "Win32",
     maxTouchPoints: 0,
   }), false);
+});
+
+test("provides platform-specific installation guidance without calling shortcuts PWAs", () => {
+  const iosSafari = getInstallGuide({
+    appleMobile: true,
+    appleSafari: true,
+    userAgent: "iPhone Safari",
+  });
+  assert.match(iosSafari.title, /écran d’accueil/);
+  assert.equal(iosSafari.steps.length, 3);
+
+  const androidChrome = getInstallGuide({
+    appleMobile: false,
+    appleSafari: false,
+    userAgent: "Mozilla/5.0 (Linux; Android 15) Chrome/150.0.0.0",
+  });
+  assert.match(androidChrome.hint, /Chrome/);
+  assert.ok(androidChrome.steps.some((step) => /Créer un raccourci/.test(step)));
+  assert.ok(androidChrome.steps.some((step) => /ce n’est pas une installation PWA/.test(step)));
 });
 
 test("install invitation dismissal lasts exactly seven days", () => {

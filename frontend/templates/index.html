@@ -12,8 +12,8 @@
     <link rel="icon" href="{% static 'brand/pocketnet-icon.svg' %}" type="image/svg+xml">
     <link rel="icon" href="{% static 'brand/pocketnet-192.png' %}" sizes="192x192" type="image/png">
     <link rel="apple-touch-icon" href="{% static 'brand/pocketnet-apple-180.png' %}" sizes="180x180">
-    <link rel="manifest" href="{% static 'site.webmanifest' %}">
-    <link rel="stylesheet" href="{% static 'app.css' %}?v=pwa-10">
+    <link rel="manifest" href="{% static 'site.webmanifest' %}?v=pwa-2">
+    <link rel="stylesheet" href="{% static 'app.css' %}?v=pwa-11">
     <title>PocketNet — Votre espace réseau</title>
   </head>
   <body>
@@ -30,7 +30,7 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>
             <span>Accueil</span>
           </a>
-          <a class="nav-link" href="#apprendre">
+          <a class="nav-link" href="/apprendre/">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5.75A2.25 2.25 0 0 1 6.75 3.5H20v15H6.75A2.25 2.25 0 0 0 4.5 20.75z"/><path d="M4.5 5.75v15M8.5 7.5h7M8.5 11h7"/></svg>
             <span>Apprendre</span>
           </a>
@@ -38,7 +38,7 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M8 7.2 10.8 16M16 7.2 13.2 16M8 6h8"/></svg>
             <span>Fonctionnalités</span>
           </a>
-          <a class="nav-link" href="#equipements">
+          <a class="nav-link" href="/equipements/">
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="7" width="17" height="10" rx="2"/><path d="M7 12h.01M10.5 12h.01M14 12h.01M17.5 12h.01"/></svg>
             <span>Équipements</span>
           </a>
@@ -120,7 +120,7 @@
                 <h1 id="welcome-title">Comprenez les réseaux. Construisez. Configurez. Simulez.</h1>
                 <p>PocketNet est une plateforme d’apprentissage et de simulation des réseaux informatiques. Découvrez les fondamentaux, explorez les équipements et développez vos compétences grâce à un laboratoire virtuel interactif.</p>
                 <div class="public-hero-actions">
-                  <a class="button public-button-light" href="#apprendre">Explorer les ressources</a>
+                  <a class="button public-button-light" href="/apprendre/">Explorer les ressources</a>
                   <a class="button public-button-outline" href="#laboratoires">Accéder au laboratoire</a>
                 </div>
                 <p class="public-hero-note">Laboratoires enregistrés localement sur cet appareil.</p>
@@ -194,7 +194,7 @@
                   <span class="section-eyebrow">ESPACE APPRENDRE</span>
                   <h3>Développez vos connaissances réseau.</h3>
                   <p>Découvrez les concepts fondamentaux, comprenez les protocoles et explorez les équipements à votre rythme.</p>
-                  <button class="public-text-link" type="button" data-open-resources>Explorer les ressources <span aria-hidden="true">→</span></button>
+                  <a class="public-text-link" href="/apprendre/">Explorer les ressources <span aria-hidden="true">→</span></a>
                 </article>
                 <article class="learning-path-card learning-card-practice">
                   <span class="learning-path-icon" aria-hidden="true">
@@ -206,38 +206,6 @@
                   <a class="public-text-link" href="#laboratoires">Accéder au laboratoire <span aria-hidden="true">→</span></a>
                 </article>
               </div>
-              <section class="learning-center-panel" aria-labelledby="learning-catalog-title">
-                <div class="learning-center-heading">
-                  <div>
-                    <span class="section-eyebrow">CENTRE D’APPRENTISSAGE</span>
-                    <h3 id="learning-catalog-title">Explorez les cours et les références réseau.</h3>
-                    <p>Les catégories, cours et compteurs ci-dessous proviennent des ressources publiées.</p>
-                  </div>
-                  <span class="learning-content-badge">CONTENU PUBLIC</span>
-                </div>
-                <form class="learning-filters" id="learning-filters">
-                  <label class="learning-search-field" for="learning-search">
-                    <span>Rechercher un cours, un protocole, un équipement…</span>
-                    <input id="learning-search" name="search" type="search" placeholder="Que souhaitez-vous apprendre aujourd’hui ?" autocomplete="off">
-                  </label>
-                  <label for="learning-category-filter">Catégorie
-                    <select id="learning-category-filter" name="category">
-                      <option value="">Toutes les catégories</option>
-                    </select>
-                  </label>
-                  <label for="learning-level-filter">Niveau
-                    <select id="learning-level-filter" name="level">
-                      <option value="">Tous les niveaux</option>
-                      <option value="beginner">Débutant</option>
-                      <option value="intermediate">Intermédiaire</option>
-                      <option value="advanced">Avancé</option>
-                    </select>
-                  </label>
-                  <button class="learning-reset" type="reset">Effacer les filtres</button>
-                </form>
-                <p class="learning-status" id="learning-status" role="status" aria-live="polite">Chargement des ressources publiques…</p>
-                <div class="learning-page" id="learning-page" aria-live="polite"></div>
-              </section>
             </section>
 
             <section class="public-section" id="fonctionnalites" aria-labelledby="features-title">
@@ -248,7 +216,7 @@
               </div>
               <div class="feature-grid">
                 <article class="feature-card"><span class="feature-number">01</span><h3>Construire une topologie</h3><p>Ajoutez des équipements, déplacez-les et reliez des interfaces Ethernet distinctes.</p></article>
-                <article class="feature-card"><span class="feature-number">02</span><h3>Configurer des switches</h3><p>Expérimentez les VLAN, les ports access et les trunks 802.1Q sur le modèle pédagogique Catalyst 2960.</p></article>
+                <article class="feature-card"><span class="feature-number">02</span><h3>Configurer des switches</h3><p>Expérimentez les VLAN et trunks 802.1Q sur Catalyst 2960, puis le routage inter-VLAN avec un Catalyst 3560.</p></article>
                 <article class="feature-card"><span class="feature-number">03</span><h3>Utiliser le CLI</h3><p>Exécutez les commandes prises en charge sur la console switch et le terminal réseau des PC.</p></article>
                 <article class="feature-card"><span class="feature-number">04</span><h3>Observer les échanges</h3><p>Suivez les événements simulés, notamment ARP, Ethernet, IPv4 et ICMP.</p></article>
                 <article class="feature-card"><span class="feature-number">05</span><h3>Explorer le routage</h3><p>Testez la connectivité IPv4 entre sous-réseaux au travers de routeurs configurés.</p></article>
@@ -257,16 +225,17 @@
             </section>
 
             <section class="public-section" id="equipements" aria-labelledby="equipment-title">
-              <div class="public-section-heading public-section-heading-row">
+              <div class="public-section-heading">
                 <div>
                   <span class="section-eyebrow">ÉQUIPEMENTS RÉSEAU</span>
-                  <h2 id="equipment-title">Découvrez les rôles et les limites de chaque équipement.</h2>
-                  <p>La présence dans l’éditeur ne signifie pas toujours que le comportement réseau est simulé.</p>
+                  <h2 id="equipment-title">Rencontrez les équipements qui font vivre un réseau.</h2>
+                  <p>Explorez des photos réelles, comprenez le rôle de chaque appareil et voyez exactement ce que PocketNet sait simuler.</p>
                 </div>
-                <button class="public-text-link" type="button" data-open-resources>Voir les fiches actuelles <span aria-hidden="true">→</span></button>
               </div>
-              <div class="device-capability-grid" id="learning-equipment-grid" aria-live="polite">
-                <p class="learning-status">Chargement des fiches d’équipements…</p>
+              <div class="equipment-intro-card">
+                <span class="equipment-intro-mark" aria-hidden="true">01—06</span>
+                <p>Ordinateur, switch, routeur, laptop, serveur et point d’accès Wi-Fi : découvrez leur apparence, leur mission et leurs limites dans le simulateur.</p>
+                <a class="button button-primary" href="/equipements/">Explorer les équipements <span aria-hidden="true">→</span></a>
               </div>
             </section>
 
@@ -310,7 +279,7 @@
               <a class="footer-brand" href="#accueil"><img src="{% static 'brand/pocketnet-icon.svg' %}" alt="">PocketNet</a>
               <p>Apprendre, comprendre et expérimenter les réseaux informatiques.</p>
               <nav aria-label="Liens de pied de page">
-                <a href="#accueil">Accueil</a><a href="#apprendre">Apprendre</a><a href="#equipements">Équipements</a><a href="#laboratoires">Laboratoire</a>
+                <a href="#accueil">Accueil</a><a href="/apprendre/">Apprendre</a><a href="/equipements/">Équipements</a><a href="#laboratoires">Laboratoire</a>
               </nav>
               <small>© {% now "Y" %} PocketNet</small>
             </footer>
@@ -335,6 +304,7 @@
                 <button class="editor-tool-button" type="button" data-add-device="pc" title="Ajouter un PC">＋ PC</button>
                 <button class="editor-tool-button" type="button" data-add-device="laptop" title="Ajouter un laptop">＋ Laptop</button>
                 <button class="editor-tool-button" type="button" data-add-device="switch" title="Ajouter un switch Ethernet">＋ Switch</button>
+                <button class="editor-tool-button" type="button" data-add-device="layer3-switch" title="Ajouter un commutateur multicouche">＋ Switch L3</button>
                 <button class="editor-tool-button" type="button" data-add-device="router" title="Ajouter un routeur">＋ Routeur</button>
                 <button class="editor-tool-button" type="button" data-add-device="server" title="Ajouter un serveur">＋ Serveur</button>
                 <button class="editor-tool-button" type="button" data-add-device="access-point" title="Ajouter un point d’accès Wi-Fi">＋ Wi-Fi</button>
@@ -436,9 +406,13 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>
         <span>Accueil</span>
       </a>
-      <a class="mobile-nav-link" href="#apprendre">
+      <a class="mobile-nav-link" href="/apprendre/">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5.75A2.25 2.25 0 0 1 6.75 3.5H20v15H6.75A2.25 2.25 0 0 0 4.5 20.75z"/><path d="M4.5 5.75v15M8.5 7.5h7M8.5 11h7"/></svg>
         <span>Apprendre</span>
+      </a>
+      <a class="mobile-nav-link" href="/equipements/">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="7" width="17" height="10" rx="2"/><path d="M7 12h.01M10.5 12h.01M14 12h.01M17.5 12h.01"/></svg>
+        <span>Équipements</span>
       </a>
       <a class="mobile-nav-link" href="#laboratoires">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3.75h8M9 3.75v6l-4.1 7.1a2.25 2.25 0 0 0 1.95 3.4h10.3a2.25 2.25 0 0 0 1.95-3.4L15 9.75v-6"/><path d="M8 15h8"/></svg>
@@ -488,29 +462,12 @@
               <div class="section-heading resource-heading">
                 <div>
                   <span class="section-eyebrow">RÉFÉRENCE</span>
-                  <h2 id="resource-equipment-title">Bibliothèque des équipements</h2>
+                  <h2 id="resource-equipment-title">Explorer les équipements</h2>
                 </div>
-                <span class="resource-counter">4 ÉLÉMENTS</span>
+                <span class="resource-counter">6 FICHES</span>
               </div>
-              <div class="equipment-grid">
-                <article class="equipment-card">
-                  <span class="equipment-symbol equipment-symbol-blue"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="8" width="16" height="9" rx="2"/><path d="M8 12.5h.01M12 12.5h.01M16 12.5h.01M9 5l3-2 3 2"/></svg></span>
-                  <span><strong>Routeur</strong><small>Interconnexion de réseaux</small></span>
-                </article>
-                <article class="equipment-card">
-                  <span class="equipment-symbol equipment-symbol-teal"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="7" width="17" height="10" rx="2"/><path d="M7 12h.01M10.5 12h.01M14 12h.01M17.5 12h.01"/></svg></span>
-                  <span><strong>Commutateur</strong><small>Connexion des équipements</small></span>
-                </article>
-                <article class="equipment-card">
-                  <span class="equipment-symbol equipment-symbol-mint"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M10 17h4"/></svg></span>
-                  <span><strong>Ordinateur</strong><small>Hôte d’un réseau local</small></span>
-                </article>
-                <article class="equipment-card">
-                  <span class="equipment-symbol equipment-symbol-slate"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="12" rx="2"/><path d="M8 20h8m-4-3v3"/></svg></span>
-                  <span><strong>Serveur</strong><small>Ressource sur le réseau</small></span>
-                </article>
-              </div>
-              <p class="resource-note">Fiches de référence uniquement. Les équipements ne sont pas encore simulés.</p>
+              <p class="resource-note">Photos créditées, explications simples et état réel de prise en charge dans PocketNet.</p>
+              <a class="button button-secondary" href="/equipements/">Ouvrir le catalogue des équipements</a>
             </div>
           </section>
       </div>
@@ -565,22 +522,18 @@
       </div>
     </dialog>
 
-    <dialog class="app-dialog pwa-ios-dialog" id="pwa-ios-dialog" aria-labelledby="pwa-ios-title">
+    <dialog class="app-dialog pwa-ios-dialog" id="pwa-install-guide" aria-labelledby="pwa-install-guide-title">
       <div class="dialog-card">
         <div class="dialog-heading">
           <span class="dialog-icon"><img src="{% static 'brand/pocketnet-icon.svg' %}" alt="" width="24" height="24"></span>
-          <button class="dialog-close" type="button" data-close-pwa-ios aria-label="Fermer">×</button>
+          <button class="dialog-close" type="button" data-close-pwa-guide aria-label="Fermer">×</button>
         </div>
-        <span class="section-eyebrow">INSTALLATION SUR APPLE</span>
-        <h2 id="pwa-ios-title">Ajouter PocketNet à l’écran d’accueil</h2>
-        <p class="dialog-description" id="pwa-ios-browser-hint" hidden>Pour installer PocketNet, ouvrez cette page dans Safari, puis suivez ces étapes :</p>
-        <ol class="pwa-ios-steps">
-          <li>Dans Safari, appuyez sur le bouton <strong>Partager</strong>.</li>
-          <li>Choisissez <strong>Ajouter à l’écran d’accueil</strong>.</li>
-          <li>Confirmez avec <strong>Ajouter</strong>.</li>
-        </ol>
+        <span class="section-eyebrow" id="pwa-install-guide-eyebrow">INSTALLATION</span>
+        <h2 id="pwa-install-guide-title">Installer PocketNet</h2>
+        <p class="dialog-description" id="pwa-install-guide-hint"></p>
+        <ol class="pwa-ios-steps" id="pwa-install-guide-steps"></ol>
         <div class="dialog-actions">
-          <button class="button button-primary" type="button" data-close-pwa-ios>Compris</button>
+          <button class="button button-primary" type="button" data-close-pwa-guide>Compris</button>
         </div>
       </div>
     </dialog>
@@ -657,7 +610,7 @@
           </div>
           <button class="dialog-close" type="button" data-close-switch aria-label="Fermer">×</button>
         </header>
-        <p class="pc-panel-description">Console de configuration IOS pédagogique. Les commandes prises en charge modifient le moteur Layer 2 et sont enregistrées avec le laboratoire.</p>
+        <p class="pc-panel-description">Console IOS pédagogique. Les commandes Layer 2 et, sur le Catalyst 3560, les interfaces VLAN, ports routés et routes IPv4 sont simulés et enregistrés avec le laboratoire.</p>
         <div class="pc-terminal-window switch-terminal-window">
           <pre class="pc-terminal-output" id="switch-terminal-output" role="log" aria-live="polite"></pre>
           <form class="pc-terminal-form" id="switch-terminal-form">
@@ -670,12 +623,12 @@
             <span>↑ / ↓ historique · Tab complétion</span>
           </div>
         </div>
-        <p class="pc-terminal-help">VLAN, accès/trunk 802.1Q, ports, table MAC, configuration running/startup et sauvegarde sont simulés. STP et les fonctions non implémentées signalent explicitement leur indisponibilité.</p>
+        <p class="pc-terminal-help">VLAN, accès/trunk 802.1Q, SVI, ports routés, routes statiques, ARP, ping et table MAC sont simulés selon le modèle. STP et les fonctions non implémentées signalent explicitement leur indisponibilité.</p>
       </div>
     </dialog>
 
     <div class="toast" id="app-toast" role="status" aria-live="polite" hidden></div>
-    <script src="{% static 'app.js' %}?v=pwa-9" type="module"></script>
+    <script src="{% static 'app.js' %}?v=pwa-10" type="module"></script>
     <script src="{% static 'learning-center.mjs' %}?v=learning-2" type="module"></script>
   </body>
 </html>

@@ -24,8 +24,8 @@ export type { SwitchTerminalMode, SwitchTerminalOptions, SwitchTerminalResult, S
 export type { TerminalOutput, TerminalTone } from "./lab/terminal/types.js";
 export { TopologySimulation } from "./lab/TopologySimulation.js";
 export type { TopologyConnectionConfiguration, TopologyDeviceConfiguration, TopologyInterfaceConfiguration, TopologyPingResult, TopologySimulationConfiguration, TopologyStaticRouteConfiguration, } from "./lab/TopologySimulation.js";
-export { CATALYST_2960_MODEL, createDefaultSwitchConfiguration, defaultSwitchPortConfiguration, isReservedVlanId, isVlanAllowed, normalizeSwitchConfiguration, } from "./protocols/ethernet/SwitchConfiguration.js";
-export type { AllowedVlanSet, SwitchPersistentConfiguration, SwitchModel, SwitchPortConfiguration, SwitchPortMode, SwitchRunningConfiguration, SwitchVlan, } from "./protocols/ethernet/SwitchConfiguration.js";
+export { CATALYST_2960_MODEL, CATALYST_3560_MODEL, createDefaultSwitchConfiguration, defaultSwitchPortConfiguration, isReservedVlanId, isVlanAllowed, normalizeSwitchConfiguration, } from "./protocols/ethernet/SwitchConfiguration.js";
+export type { AllowedVlanSet, SwitchPersistentConfiguration, SwitchModel, SwitchPortConfiguration, SwitchPortMode, SwitchRunningConfiguration, SwitchStaticRouteConfiguration, SwitchVlan, SwitchVlanInterfaceConfiguration, } from "./protocols/ethernet/SwitchConfiguration.js";
 export { ArpCache, ETHERNET_BROADCAST_MAC, generateLocalMacAddress, normalizeMacAddress, } from "./protocols/arp/arp.js";
 export type { ArpMessage, MacAddress } from "./protocols/arp/arp.js";
 export { EthernetSwitch } from "./protocols/ethernet/EthernetSwitch.js";

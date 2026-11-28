@@ -24,10 +24,34 @@ const DEVICE_LABELS = {
   pc: "PC de bureau",
   laptop: "Laptop",
   switch: "Switch",
+  "layer3-switch": "Switch multicouche",
   router: "Routeur",
   server: "Serveur",
   "access-point": "Point d’accès",
 };
+
+function isSwitchDevice(device) {
+  return device.kind === "switch" || device.kind === "layer3-switch";
+}
+
+function trimSwitchConfiguration(configuration, interfaceIds) {
+  const trimRunning = (running) => ({
+    ...running,
+    staticMacEntries: running.staticMacEntries.filter((entry) =>
+      interfaceIds.has(entry.portInterfaceId)),
+    ...(running.routedPorts
+      ? {
+          routedPorts: Object.fromEntries(Object.entries(running.routedPorts)
+            .filter(([interfaceId]) => interfaceIds.has(interfaceId))),
+        }
+      : {}),
+  });
+  return {
+    ...configuration,
+    running: trimRunning(configuration.running),
+    startup: configuration.startup ? trimRunning(configuration.startup) : null,
+  };
+}
 
 function createElement(tagName, className = "", text = "") {
   const element = document.createElement(tagName);
@@ -72,7 +96,7 @@ function addSvgElement(parent, tagName, attributes) {
 }
 
 function getPortLayout(device) {
-  if (device.kind === "switch") {
+  if (isSwitchDevice(device)) {
     const rows = Math.ceil(device.interfaces.length / 8);
     const firstRowY = 70 - ((rows - 1) * 9);
     return device.interfaces.map((_, index) => ({
@@ -114,7 +138,7 @@ function drawDeviceBody(svg, kind) {
     return;
   }
 
-  if (kind === "switch") {
+  if (kind === "switch" || kind === "layer3-switch") {
     addSvgElement(svg, "rect", { x: 10, y: 22, width: 164, height: 79, rx: 8, fill: "#1E3A8A", stroke: "#0F172A", "stroke-width": 3 });
     addSvgElement(svg, "rect", { x: 17, y: 31, width: 150, height: 62, rx: 4, fill: "#0F172A" });
     addSvgElement(svg, "path", { d: "M25 42h30M25 48h20", stroke: "#2DD4BF", "stroke-width": 2, "stroke-linecap": "round" });
@@ -155,7 +179,7 @@ function drawEquipmentSvg(svg, device, connected, pendingPortId) {
   device.interfaces.forEach((networkInterface, index) => {
     const point = layout[index];
     const isConnected = connected.has(networkInterface.id);
-    const portEnabled = device.kind === "switch"
+    const portEnabled = isSwitchDevice(device)
       ? device.switchConfig?.running?.ports?.[networkInterface.id]?.enabled !== false
       : networkInterface.enabled;
     const group = addSvgElement(svg, "g", {
@@ -175,7 +199,7 @@ function drawEquipmentSvg(svg, device, connected, pendingPortId) {
       x: point.x - 3.5, y: point.y - 2.5, width: 7, height: 5, rx: 0.5,
       class: "equipment-port-opening",
     });
-    const portLabel = device.kind === "switch" ? String(index + 1) : networkInterface.name;
+    const portLabel = isSwitchDevice(device) ? String(index + 1) : networkInterface.name;
     addSvgElement(group, "text", {
       x: point.x, y: point.y + 13, class: "equipment-port-label", "text-anchor": "middle",
     }).textContent = portLabel;
@@ -252,7 +276,7 @@ export class TopologyEditor {
     this.deviceLayer.addEventListener("dblclick", (event) => {
       const node = event.target.closest("[data-device-id]");
       const device = this.topology.devices.find((item) => item.id === node?.dataset.deviceId);
-      if (device?.kind !== "pc" && device?.kind !== "switch") return;
+      if (device?.kind !== "pc" && !isSwitchDevice(device)) return;
       event.preventDefault();
       this.root.dispatchEvent(new CustomEvent(device.kind === "pc" ? "computer:open" : "switch:open", {
         detail: { deviceId: device.id },
@@ -623,7 +647,7 @@ export class TopologyEditor {
   }
 
   updateSwitchConfiguration(deviceId, configuration) {
-    const device = this.topology.devices.find((item) => item.id === deviceId && item.kind === "switch");
+    const device = this.topology.devices.find((item) => item.id === deviceId && isSwitchDevice(item));
     if (!device) throw new Error("Commutateur introuvable dans ce laboratoire.");
     const switchConfig = normalizeSwitchConfiguration(configuration, device.name, device.interfaces);
     this.topology = {
@@ -661,7 +685,7 @@ export class TopologyEditor {
         return macAddress;
       };
 
-      if (device.kind === "switch") {
+      if (isSwitchDevice(device)) {
         const portCount = Number(values.get("portCount"));
         if (![4, 8, 16, 24].includes(portCount)) throw new Error("Nombre de ports non valide.");
         const connected = connectedInterfaces(this.topology);
@@ -684,10 +708,12 @@ export class TopologyEditor {
               macAddress: readMacAddress(index),
             })),
         };
+        const remainingInterfaceIds = new Set(updatedDevice.interfaces.map((item) => item.id));
         updatedDevice.switchConfig = normalizeSwitchConfiguration(
-          device.switchConfig,
+          trimSwitchConfiguration(device.switchConfig, remainingInterfaceIds),
           name,
           updatedDevice.interfaces,
+          device.kind === "layer3-switch" ? "catalyst-3560" : "catalyst-2960",
         );
         updatedDevice.switchConfig = {
           ...updatedDevice.switchConfig,
@@ -808,7 +834,7 @@ export class TopologyEditor {
       );
       const name = createElement("strong", "topology-node-name", device.name);
       const connectedCount = device.interfaces.filter((item) => occupied.has(item.id)).length;
-      const detail = device.kind === "switch"
+      const detail = isSwitchDevice(device)
         ? `${connectedCount} / ${device.portCount} ports connectés`
         : device.kind === "pc" && device.interfaces[0]?.ipv4Address
           ? device.interfaces[0].ipv4Address
@@ -910,7 +936,14 @@ export class TopologyEditor {
       createField("Nom de l’équipement", "name", device.name, { required: true }),
     );
 
-    if (device.kind === "switch") {
+    if (isSwitchDevice(device)) {
+      form.append(createElement(
+        "p",
+        "editor-port-status",
+        device.kind === "layer3-switch"
+          ? "Catalyst 3560 · commutation VLAN et routage IPv4 Layer 3."
+          : "Catalyst 2960 · commutation Ethernet Layer 2.",
+      ));
       const label = createElement("label", "editor-field", "Nombre de ports");
       const select = document.createElement("select");
       select.name = "portCount";

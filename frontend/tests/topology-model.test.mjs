@@ -116,6 +116,42 @@ test("creates and restores switch configuration with backwards-compatible defaul
   assert.equal(migratedAging.running.macAgingTimeSeconds, 300);
 });
 
+test("creates a persistent Layer 3 switch model and rejects Layer 3 state on a 2960", () => {
+  let topology = createEmptyTopology();
+  topology = addDevice(topology, "layer3-switch", 200, 200, () => "core");
+  const layer3Switch = topology.devices[0];
+  assert.equal(layer3Switch.switchConfig.model, "catalyst-3560");
+  assert.equal(layer3Switch.switchConfig.running.ipRouting, false);
+  assert.deepEqual(layer3Switch.switchConfig.running.vlanInterfaces, []);
+
+  const configured = structuredClone(topology);
+  configured.devices[0].switchConfig.running.vlans.push({
+    id: 20,
+    name: "Users",
+    status: "active",
+  });
+  configured.devices[0].switchConfig.running.vlanInterfaces = [{
+    vlanId: 20,
+    enabled: true,
+    description: "User gateway",
+    ipv4: { address: "192.168.20.1", subnetMask: "255.255.255.0" },
+  }];
+  configured.devices[0].switchConfig.running.ipRouting = true;
+  const restored = normalizeTopology(JSON.parse(JSON.stringify(configured)));
+  assert.deepEqual(restored.devices[0].switchConfig, configured.devices[0].switchConfig);
+
+  const invalid2960 = structuredClone(topology);
+  invalid2960.devices[0].kind = "switch";
+  invalid2960.devices[0].switchConfig = {
+    ...invalid2960.devices[0].switchConfig,
+    model: "catalyst-2960",
+  };
+  assert.throws(
+    () => normalizeTopology(invalid2960),
+    /Layer 3 nécessitent un Catalyst 3560/,
+  );
+});
+
 test("migrates legacy switch VLANs and interface names without losing custom settings", () => {
   const topology = createLab();
   const legacy = structuredClone(topology);
@@ -159,7 +195,7 @@ test("migrates legacy switch VLANs and interface names without losing custom set
 });
 
 test("supports every illustrated equipment kind with individually identified ports", () => {
-  const kinds = ["pc", "laptop", "switch", "router", "server", "access-point"];
+  const kinds = ["pc", "laptop", "switch", "layer3-switch", "router", "server", "access-point"];
   let topology = createEmptyTopology();
   kinds.forEach((kind, index) => {
     topology = addDevice(topology, kind, 100 + index * 200, 100, () => `equipment-${index}`);

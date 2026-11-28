@@ -85,6 +85,7 @@ let switchTerminalHistory = [];
 let switchTerminalHistoryIndex = 0;
 let activeTopologySimulation;
 let activeTopologySignature = null;
+let activeTopologyStructureSignature = null;
 let terminalSessionStates = {};
 let terminalStateSaveTimeout;
 let terminalStateStorageFailed = false;
@@ -250,9 +251,33 @@ function getTopologySimulationSignature(topology) {
   return JSON.stringify({
     devices: topology.devices.map(({
       id, name, kind, interfaces, defaultGateway, dnsServer, dhcpEnabled, icmpEnabled, initialTtl, staticRoutes,
+      switchConfig,
+    }) => ({
+      id, name, kind, interfaces, defaultGateway, dnsServer, dhcpEnabled, icmpEnabled, initialTtl, staticRoutes,
+      switchConfig,
+    })),
+    connections: topology.connections,
+  });
+}
+
+function getTopologyStructureSignature(topology) {
+  return JSON.stringify({
+    devices: topology.devices.map(({
+      id, name, kind, interfaces, defaultGateway, dnsServer, dhcpEnabled, icmpEnabled, initialTtl, staticRoutes,
     }) => ({ id, name, kind, interfaces, defaultGateway, dnsServer, dhcpEnabled, icmpEnabled, initialTtl, staticRoutes })),
     connections: topology.connections,
   });
+}
+
+function simulationMatchesSwitchConfigurations(simulation, topology) {
+  return topology.devices
+    .filter((device) => device.kind === "switch" || device.kind === "layer3-switch")
+    .every((device) => {
+      const runtime = simulation.getSwitch(device.id);
+      return runtime
+        && JSON.stringify(simulation.serializeSwitchConfiguration(device.id, runtime.persistentConfiguration))
+          === JSON.stringify(device.switchConfig);
+    });
 }
 
 function addSimulationEventsPlaceholder() {
@@ -400,10 +425,18 @@ function saveTopology(topology) {
   computerTerminal = null;
   const topologySignature = getTopologySimulationSignature(topology);
   if (!activeTopologySimulation || topologySignature !== activeTopologySignature) {
-    activeTopologySimulation = new TopologySimulation(topology);
+    const structureSignature = getTopologyStructureSignature(topology);
+    if (
+      !activeTopologySimulation
+      || structureSignature !== activeTopologyStructureSignature
+      || !simulationMatchesSwitchConfigurations(activeTopologySimulation, topology)
+    ) {
+      activeTopologySimulation = new TopologySimulation(topology);
+      activeTopologyStructureSignature = structureSignature;
+      switchTerminal = null;
+      renderSimulationEvents(activeTopologySimulation.engine.events);
+    }
     activeTopologySignature = topologySignature;
-    switchTerminal = null;
-    renderSimulationEvents(activeTopologySimulation.engine.events);
   }
   renderLaboratories();
   return true;
@@ -416,6 +449,7 @@ function closeLaboratoryEditor() {
   activeLaboratoryId = null;
   activeTopologySimulation = null;
   activeTopologySignature = null;
+  activeTopologyStructureSignature = null;
   labEditorRoot.hidden = true;
   content.classList.remove("editor-mode");
   window.location.hash = "#laboratoires";
@@ -431,6 +465,7 @@ function openLaboratoryEditor(laboratory) {
     topologyEditor.open(laboratory.topology);
     activeTopologySimulation = new TopologySimulation(topologyEditor.topology);
     activeTopologySignature = getTopologySimulationSignature(topologyEditor.topology);
+    activeTopologyStructureSignature = getTopologyStructureSignature(topologyEditor.topology);
     resetSimulationEvents();
     renderSimulationEvents(activeTopologySimulation.engine.events);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -752,7 +787,8 @@ computerDialog.addEventListener("close", () => {
 
 function getActiveSwitch() {
   return topologyEditor.topology.devices.find((device) =>
-    device.id === activeSwitchId && device.kind === "switch");
+    device.id === activeSwitchId
+    && (device.kind === "switch" || device.kind === "layer3-switch"));
 }
 
 function saveSwitchTerminalState() {
@@ -769,7 +805,7 @@ function saveSwitchTerminalState() {
 
 function openSwitchManagement(deviceId) {
   const device = topologyEditor.topology.devices.find((item) =>
-    item.id === deviceId && item.kind === "switch");
+    item.id === deviceId && (item.kind === "switch" || item.kind === "layer3-switch"));
   if (!device) return;
   activeSwitchId = device.id;
   switchTerminal = null;
@@ -827,6 +863,10 @@ function ensureSwitchTerminal() {
           device.id,
           activeTopologySimulation.serializeSwitchConfiguration(device.id, configuration),
         ),
+      ping: (destinationIp) => activeTopologySimulation.ping(device.id, destinationIp),
+      getLayer3Interfaces: () => activeTopologySimulation.getLayer3InterfaceEntries(device.id),
+      getRouteEntries: () => activeTopologySimulation.getRouteEntries(device.id),
+      getArpEntries: () => activeTopologySimulation.getArpEntries(device.id),
     });
   }
   return switchTerminal;

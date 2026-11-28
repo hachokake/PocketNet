@@ -1,0 +1,110 @@
+{% load static %}
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#1E3A8A">
+    <meta name="description" content="Découvrez les équipements réseau en photos : rôles, usages et limites de simulation dans PocketNet.">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="PocketNet">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="icon" href="{% static 'brand/pocketnet-icon.svg' %}" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="{% static 'brand/pocketnet-apple-180.png' %}" sizes="180x180">
+    <link rel="manifest" href="{% static 'site.webmanifest' %}?v=pwa-2">
+    <link rel="stylesheet" href="{% static 'app.css' %}?v=pwa-11">
+    <title>Équipements réseau — PocketNet</title>
+  </head>
+  <body class="learning-app equipment-app">
+    <a class="skip-link" href="#equipment-main">Aller au contenu</a>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <a class="brand" href="/" aria-label="PocketNet, accueil">
+          <img src="{% static 'brand/pocketnet-icon.svg' %}" alt="">
+          <span>Pocket<span class="brand-accent">Net</span></span>
+        </a>
+        <p class="nav-caption">DÉCOUVRIR POCKETNET</p>
+        <nav class="primary-nav" aria-label="Navigation principale">
+          <a class="nav-link" href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg><span>Accueil</span></a>
+          <a class="nav-link" href="/apprendre/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5.75A2.25 2.25 0 0 1 6.75 3.5H20v15H6.75A2.25 2.25 0 0 0 4.5 20.75z"/><path d="M4.5 5.75v15M8.5 7.5h7M8.5 11h7"/></svg><span>Apprendre</span></a>
+          <a class="nav-link" href="/#fonctionnalites"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M8 7.2 10.8 16M16 7.2 13.2 16M8 6h8"/></svg><span>Fonctionnalités</span></a>
+          <a class="nav-link is-active" href="/equipements/" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="7" width="17" height="10" rx="2"/><path d="M7 12h.01M10.5 12h.01M14 12h.01M17.5 12h.01"/></svg><span>Équipements</span></a>
+          <a class="nav-link" href="/#apropos"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></svg><span>À propos</span></a>
+          <a class="nav-link" href="/#laboratoires"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3.75h8M9 3.75v6l-4.1 7.1a2.25 2.25 0 0 0 1.95 3.4h10.3a2.25 2.25 0 0 0 1.95-3.4L15 9.75v-6"/><path d="M8 15h8"/></svg><span>Mes laboratoires</span></a>
+        </nav>
+      </aside>
+
+      <div class="main-column">
+        <header class="topbar">
+          <a class="mobile-brand" href="/" aria-label="PocketNet, accueil">
+            <img src="{% static 'brand/pocketnet-icon.svg' %}" alt="">
+            <span>Pocket<span class="brand-accent">Net</span></span>
+          </a>
+          <div class="topbar-spacer"></div>
+          <a class="button button-primary topbar-create" href="/#laboratoires" aria-label="Nouveau laboratoire"><span>Nouveau laboratoire</span></a>
+        </header>
+
+        <main class="content" id="equipment-main">
+          <div class="pwa-notices" aria-label="État de l’application">
+            <div class="pwa-notice pwa-offline-notice" id="pwa-offline-notice" role="status" hidden>
+              <span class="pwa-notice-symbol" aria-hidden="true">!</span>
+              <div><strong>Connexion Internet indisponible</strong><p>PocketNet ne propose pas encore de mode hors ligne complet.</p></div>
+            </div>
+            <section class="pwa-notice pwa-install-notice" id="pwa-install-notice" aria-labelledby="pwa-install-title" hidden>
+              <img src="{% static 'brand/pocketnet-icon.svg' %}" alt="" width="48" height="48">
+              <div class="pwa-notice-copy"><strong id="pwa-install-title">Installer PocketNet</strong><p id="pwa-install-description">Ouvrez PocketNet dans une application dédiée.</p></div>
+              <div class="pwa-notice-actions">
+                <button class="button button-primary pwa-notice-primary" id="pwa-install-action" type="button">Installer</button>
+                <button class="button button-quiet pwa-notice-dismiss" id="pwa-install-dismiss" type="button">Plus tard</button>
+              </div>
+            </section>
+            <section class="pwa-notice pwa-update-notice" id="pwa-update-notice" aria-labelledby="pwa-update-title" hidden>
+              <span class="pwa-notice-symbol pwa-update-symbol" aria-hidden="true">↻</span>
+              <div class="pwa-notice-copy"><strong id="pwa-update-title">Une mise à jour est disponible</strong><p>Rechargez PocketNet pour utiliser la nouvelle version. Vos laboratoires locaux ne seront pas supprimés.</p></div>
+              <div class="pwa-notice-actions"><button class="button button-primary pwa-notice-primary" id="pwa-update-action" type="button">Mettre à jour</button></div>
+            </section>
+          </div>
+
+          <section class="learning-page-shell equipment-page-shell" data-equipment-slug="{{ equipment_slug|default:'' }}">
+            <header class="learning-page-heading">
+              <div>
+                <span class="section-eyebrow">GUIDE DE DÉCOUVERTE</span>
+                <h1 id="equipment-page-title">Équipements réseau</h1>
+              </div>
+              <span class="learning-content-badge">6 FICHES</span>
+            </header>
+            <nav class="equipment-subnav" aria-label="Navigation des équipements">
+              <a href="/equipements/">Catalogue</a>
+              <span>Des photos réelles, des explications simples et les limites exactes de PocketNet.</span>
+            </nav>
+            <p class="learning-status" id="equipment-status" role="status" aria-live="polite">Chargement des fiches d’équipements…</p>
+            <div class="equipment-content" id="equipment-content" aria-live="polite"></div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <nav class="mobile-nav" aria-label="Navigation mobile">
+      <a class="mobile-nav-link" href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg><span>Accueil</span></a>
+      <a class="mobile-nav-link" href="/apprendre/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5.75A2.25 2.25 0 0 1 6.75 3.5H20v15H6.75A2.25 2.25 0 0 0 4.5 20.75z"/><path d="M4.5 5.75v15M8.5 7.5h7M8.5 11h7"/></svg><span>Apprendre</span></a>
+      <a class="mobile-nav-link is-active" href="/equipements/" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="7" width="17" height="10" rx="2"/><path d="M7 12h.01M10.5 12h.01M14 12h.01M17.5 12h.01"/></svg><span>Équipements</span></a>
+      <a class="mobile-nav-link" href="/#laboratoires"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3.75h8M9 3.75v6l-4.1 7.1a2.25 2.25 0 0 0 1.95 3.4h10.3a2.25 2.25 0 0 0 1.95-3.4L15 9.75v-6"/><path d="M8 15h8"/></svg><span>Laboratoires</span></a>
+    </nav>
+
+    <dialog class="app-dialog pwa-ios-dialog" id="pwa-install-guide" aria-labelledby="pwa-install-guide-title">
+      <div class="dialog-card">
+        <div class="dialog-heading">
+          <span class="dialog-icon"><img src="{% static 'brand/pocketnet-icon.svg' %}" alt="" width="24" height="24"></span>
+          <button class="dialog-close" type="button" data-close-pwa-guide aria-label="Fermer">×</button>
+        </div>
+        <span class="section-eyebrow" id="pwa-install-guide-eyebrow">INSTALLATION</span>
+        <h2 id="pwa-install-guide-title">Installer PocketNet</h2>
+        <p class="dialog-description" id="pwa-install-guide-hint"></p>
+        <ol class="pwa-ios-steps" id="pwa-install-guide-steps"></ol>
+        <div class="dialog-actions"><button class="button button-primary" type="button" data-close-pwa-guide>Compris</button></div>
+      </div>
+    </dialog>
+
+    <script src="{% static 'equipment-page.mjs' %}?v=equipment-pages-1" type="module"></script>
+  </body>
+</html>

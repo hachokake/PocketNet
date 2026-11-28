@@ -1,4 +1,6 @@
+import { getNetworkAddress, normalizeIPv4Address, validateIPv4Configuration, } from "../ipv4/address.js";
 export const CATALYST_2960_MODEL = "catalyst-2960";
+export const CATALYST_3560_MODEL = "catalyst-3560";
 const CATALYST_2960_DEFAULT_VLANS = [
     { id: 1, name: "default", status: "active" },
     { id: 1002, name: "fddi-default", status: "active" },
@@ -10,6 +12,7 @@ const RESERVED_VLAN_IDS = new Set([1002, 1003, 1004, 1005]);
 function defaultVlansForModel(model) {
     switch (model) {
         case CATALYST_2960_MODEL:
+        case CATALYST_3560_MODEL:
             return CATALYST_2960_DEFAULT_VLANS;
     }
 }
@@ -19,6 +22,7 @@ export function isReservedVlanId(vlanId) {
 export function defaultSwitchPortConfiguration() {
     return {
         enabled: true,
+        switchport: true,
         mode: "access",
         accessVlan: 1,
         nativeVlan: 1,
@@ -29,16 +33,20 @@ export function defaultSwitchPortConfiguration() {
     };
 }
 export function createDefaultSwitchConfiguration(hostname, portIds, model = CATALYST_2960_MODEL) {
+    const running = {
+        hostname,
+        vlans: defaultVlansForModel(model).map((vlan) => ({ ...vlan })),
+        ports: Object.fromEntries(portIds.map((id) => [id, defaultSwitchPortConfiguration()])),
+        staticMacEntries: [],
+        macAgingTimeSeconds: 300,
+        consoleLine: { loginRequired: false, password: "" },
+        ...(model === CATALYST_3560_MODEL
+            ? { ipRouting: false, vlanInterfaces: [], routedPorts: {}, staticRoutes: [] }
+            : {}),
+    };
     return {
         model,
-        running: {
-            hostname,
-            vlans: defaultVlansForModel(model).map((vlan) => ({ ...vlan })),
-            ports: Object.fromEntries(portIds.map((id) => [id, defaultSwitchPortConfiguration()])),
-            staticMacEntries: [],
-            macAgingTimeSeconds: 300,
-            consoleLine: { loginRequired: false, password: "" },
-        },
+        running,
         startup: null,
     };
 }
@@ -81,6 +89,7 @@ function normalizeRunningConfiguration(value, hostname, portIds, model) {
     for (const id of portIds) {
         const port = candidate.ports[id] ?? defaultSwitchPortConfiguration();
         if (typeof port.enabled !== "boolean"
+            || (port.switchport !== undefined && typeof port.switchport !== "boolean")
             || (port.mode !== "access" && port.mode !== "trunk")
             || !isVlanId(port.accessVlan)
             || !isVlanId(port.nativeVlan)
@@ -98,6 +107,7 @@ function normalizeRunningConfiguration(value, hostname, portIds, model) {
         }
         ports[id] = {
             enabled: port.enabled,
+            switchport: port.switchport ?? true,
             mode: port.mode,
             accessVlan: port.accessVlan,
             nativeVlan: port.nativeVlan,
@@ -114,7 +124,8 @@ function normalizeRunningConfiguration(value, hostname, portIds, model) {
             || (Number.parseInt(entry.macAddress.slice(0, 2), 16) & 1) !== 0
             || !isVlanId(entry.vlanId)
             || !vlanIds.has(entry.vlanId)
-            || !portIds.includes(entry.portInterfaceId)) {
+            || !portIds.includes(entry.portInterfaceId)
+            || ports[entry.portInterfaceId]?.switchport === false) {
             throw new Error("Une entrée MAC statique est invalide.");
         }
         return {
@@ -139,6 +150,17 @@ function normalizeRunningConfiguration(value, hostname, portIds, model) {
         || typeof consoleLine.password !== "string") {
         throw new Error("La configuration de la ligne console est invalide.");
     }
+    const layer3Configuration = model === CATALYST_3560_MODEL
+        ? normalizeLayer3Configuration(candidate, vlanIds, portIds, ports)
+        : undefined;
+    if (model === CATALYST_2960_MODEL
+        && (candidate.ipRouting !== undefined
+            || candidate.vlanInterfaces !== undefined
+            || candidate.routedPorts !== undefined
+            || candidate.staticRoutes !== undefined
+            || Object.values(ports).some((port) => !port.switchport))) {
+        throw new Error("Les fonctions Layer 3 nécessitent un Catalyst 3560.");
+    }
     return {
         hostname: candidate.hostname.trim(),
         vlans,
@@ -146,7 +168,67 @@ function normalizeRunningConfiguration(value, hostname, portIds, model) {
         staticMacEntries,
         macAgingTimeSeconds,
         consoleLine: { ...consoleLine },
+        ...(layer3Configuration ?? {}),
     };
+}
+function normalizeLayer3Configuration(candidate, vlanIds, portIds, ports) {
+    const ipRouting = candidate.ipRouting ?? false;
+    if (typeof ipRouting !== "boolean") {
+        throw new Error("L’état du routage IPv4 est invalide.");
+    }
+    const vlanInterfaces = (candidate.vlanInterfaces ?? []).map((interfaceConfiguration) => {
+        if (!interfaceConfiguration
+            || !isVlanId(interfaceConfiguration.vlanId)
+            || !vlanIds.has(interfaceConfiguration.vlanId)
+            || typeof interfaceConfiguration.enabled !== "boolean"
+            || (interfaceConfiguration.description !== undefined
+                && typeof interfaceConfiguration.description !== "string")) {
+            throw new Error("Une interface VLAN est invalide ou référence un VLAN inexistant.");
+        }
+        return {
+            vlanId: interfaceConfiguration.vlanId,
+            enabled: interfaceConfiguration.enabled,
+            description: interfaceConfiguration.description ?? "",
+            ipv4: interfaceConfiguration.ipv4
+                ? validateIPv4Configuration(interfaceConfiguration.ipv4)
+                : null,
+        };
+    });
+    if (new Set(vlanInterfaces.map((item) => item.vlanId)).size !== vlanInterfaces.length) {
+        throw new Error("Les interfaces VLAN doivent avoir des identifiants uniques.");
+    }
+    const routedPorts = {};
+    for (const [portId, configuration] of Object.entries(candidate.routedPorts ?? {})) {
+        if (!portIds.includes(portId) || ports[portId]?.switchport !== false) {
+            throw new Error(`L’interface routée ${portId} n’est pas un port Layer 3.`);
+        }
+        routedPorts[portId] = validateIPv4Configuration(configuration);
+    }
+    const addressedInterfaces = [
+        ...vlanInterfaces.flatMap((item) => item.ipv4 ? [item.ipv4.address] : []),
+        ...Object.values(routedPorts).map((item) => item.address),
+    ];
+    if (new Set(addressedInterfaces).size !== addressedInterfaces.length) {
+        throw new Error("Une adresse IPv4 est configurée sur plusieurs interfaces du commutateur.");
+    }
+    const staticRoutes = (candidate.staticRoutes ?? []).map((route) => {
+        if (!route)
+            throw new Error("Une route statique est invalide.");
+        const configuration = validateIPv4Configuration({
+            address: route.destination,
+            subnetMask: route.subnetMask,
+        });
+        return {
+            destination: getNetworkAddress(configuration.address, configuration.subnetMask),
+            subnetMask: configuration.subnetMask,
+            nextHop: normalizeIPv4Address(route.nextHop),
+        };
+    });
+    const routeKeys = staticRoutes.map((route) => `${route.destination}/${route.subnetMask}`);
+    if (new Set(routeKeys).size !== routeKeys.length) {
+        throw new Error("La configuration contient des routes statiques dupliquées.");
+    }
+    return { ipRouting, vlanInterfaces, routedPorts, staticRoutes };
 }
 export function normalizeSwitchConfiguration(value, hostname, portIds) {
     if (value === undefined || value === null) {
@@ -156,7 +238,7 @@ export function normalizeSwitchConfiguration(value, hostname, portIds) {
         throw new Error("La configuration persistante du commutateur est invalide.");
     const candidate = value;
     const model = candidate.model ?? CATALYST_2960_MODEL;
-    if (model !== CATALYST_2960_MODEL) {
+    if (model !== CATALYST_2960_MODEL && model !== CATALYST_3560_MODEL) {
         throw new Error(`Le modèle de commutateur ${String(model)} n’est pas pris en charge.`);
     }
     return {

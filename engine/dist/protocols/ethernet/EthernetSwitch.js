@@ -1,5 +1,5 @@
 import { isMulticastMacAddress, normalizeMacAddress, } from "../arp/arp.js";
-import { createDefaultSwitchConfiguration, defaultSwitchPortConfiguration, isVlanAllowed, normalizeSwitchConfiguration, } from "./SwitchConfiguration.js";
+import { CATALYST_3560_MODEL, createDefaultSwitchConfiguration, defaultSwitchPortConfiguration, isVlanAllowed, normalizeSwitchConfiguration, } from "./SwitchConfiguration.js";
 export class EthernetSwitch {
     name;
     topology;
@@ -12,6 +12,8 @@ export class EthernetSwitch {
     startup;
     switchPortIds;
     switchModel;
+    layer3FrameHandler;
+    configurationChangeHandler;
     constructor(name, portInterfaceIds, topology, events, configuration, now = Date.now, macAgingTimeMsOverride) {
         this.name = name;
         this.topology = topology;
@@ -75,6 +77,26 @@ export class EthernetSwitch {
         return this.getPortConfiguration(portInterfaceId).enabled
             && this.isPhysicallyActive(portInterfaceId);
     }
+    get supportsLayer3() {
+        return this.switchModel === CATALYST_3560_MODEL;
+    }
+    setLayer3FrameHandler(handler) {
+        this.layer3FrameHandler = handler;
+    }
+    setConfigurationChangeHandler(handler) {
+        this.configurationChangeHandler = handler;
+        handler();
+    }
+    isVlanOperational(vlanId) {
+        if (!this.running.vlans.some((vlan) => vlan.id === vlanId))
+            return false;
+        return this.activePorts().some((portId) => {
+            const port = this.getPortConfiguration(portId);
+            return port.mode === "access"
+                ? port.accessVlan === vlanId
+                : isVlanAllowed(port.allowedVlans, vlanId);
+        });
+    }
     setRunningConfiguration(configuration) {
         const normalized = normalizeSwitchConfiguration({ model: this.switchModel, running: configuration, startup: this.startup }, this.running.hostname, [...this.switchPortIds]);
         this.running = normalized.running;
@@ -83,6 +105,7 @@ export class EthernetSwitch {
                 this.macTable.delete(key);
         }
         this.installStaticMacEntries();
+        this.configurationChangeHandler?.();
     }
     saveStartupConfiguration() {
         this.startup = structuredClone(this.running);
@@ -93,6 +116,7 @@ export class EthernetSwitch {
             : createDefaultSwitchConfiguration(this.name, [...this.switchPortIds], this.switchModel).running;
         this.macTable.clear();
         this.installStaticMacEntries();
+        this.configurationChangeHandler?.();
     }
     addStaticMacAddress(macAddress, vlanId, portInterfaceId) {
         this.assertPort(portInterfaceId);
@@ -154,12 +178,23 @@ export class EthernetSwitch {
             this.drop(frame, ingressPortId, "Le port d’entrée est désactivé ou sans liaison active.");
             return [];
         }
+        if (!ingressConfiguration.switchport) {
+            if (!this.supportsLayer3 || frame.vlanId !== undefined || !this.layer3FrameHandler) {
+                this.drop(frame, ingressPortId, "Le port routé ne peut pas traiter cette trame.");
+            }
+            else {
+                this.layer3FrameHandler(ingressPortId, null, frame);
+            }
+            return [];
+        }
         const vlanId = this.ingressVlan(ingressConfiguration, frame);
         if (vlanId === null || !this.running.vlans.some((vlan) => vlan.id === vlanId)) {
             this.drop(frame, ingressPortId, "La trame est marquée avec un VLAN non autorisé ou inexistant.");
             return [];
         }
         if (!this.learnSource(sourceMac, ingressPortId, vlanId))
+            return [];
+        if (this.layer3FrameHandler?.(ingressPortId, vlanId, frame))
             return [];
         const destinationEntry = this.findMacEntry(vlanId, destinationMac);
         if (destinationEntry?.portInterfaceId === ingressPortId) {
@@ -191,6 +226,28 @@ export class EthernetSwitch {
             vlanId: String(vlanId),
         });
         return [forwarded];
+    }
+    forwardFromVlan(vlanId, frame) {
+        if (!this.supportsLayer3)
+            throw new Error("Le routage depuis un VLAN nécessite un Catalyst 3560.");
+        this.assertVlanExists(vlanId);
+        const destinationMac = normalizeMacAddress(frame.destinationMac);
+        const destination = this.findMacEntry(vlanId, destinationMac);
+        if (destination) {
+            const egress = this.prepareEgress(destination.portInterfaceId, vlanId, frame);
+            return egress ? [egress] : [];
+        }
+        return this.activePorts()
+            .map((portId) => this.prepareEgress(portId, vlanId, frame))
+            .filter((entry) => entry !== null);
+    }
+    recordRoutedOutput(portInterfaceId) {
+        this.assertPort(portInterfaceId);
+        const port = this.getPortConfiguration(portInterfaceId);
+        if (!this.supportsLayer3 || port.switchport || !this.isPortOperational(portInterfaceId)) {
+            throw new Error(`Le port ${this.portName(portInterfaceId)} n’est pas opérationnel en mode routé.`);
+        }
+        this.incrementCounter(portInterfaceId, "outputPackets");
     }
     learnSource(macAddress, portInterfaceId, vlanId) {
         if (isMulticastMacAddress(macAddress)) {
@@ -238,7 +295,7 @@ export class EthernetSwitch {
     }
     prepareEgress(portInterfaceId, vlanId, frame) {
         const port = this.getPortConfiguration(portInterfaceId);
-        if (!port.enabled || !this.isPhysicallyActive(portInterfaceId))
+        if (!port.switchport || !port.enabled || !this.isPhysicallyActive(portInterfaceId))
             return null;
         let preparedFrame;
         if (port.mode === "access") {
@@ -312,7 +369,9 @@ export class EthernetSwitch {
         return this.topology.getInterface(portInterfaceId)?.name ?? portInterfaceId;
     }
     activePorts() {
-        return [...this.switchPortIds].filter((portId) => this.getPortConfiguration(portId).enabled && this.isPhysicallyActive(portId));
+        return [...this.switchPortIds].filter((portId) => this.getPortConfiguration(portId).switchport
+            && this.getPortConfiguration(portId).enabled
+            && this.isPhysicallyActive(portId));
     }
     drop(frame, portInterfaceId, reason) {
         this.incrementCounter(portInterfaceId, "inputErrors");

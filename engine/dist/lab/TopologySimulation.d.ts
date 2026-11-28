@@ -63,6 +63,8 @@ export declare class TopologySimulation {
     private readonly switches;
     private readonly routerInterfaces;
     private readonly staticRoutesByDevice;
+    private readonly vlanInterfaces;
+    private readonly layer3HostInterfaceIds;
     private readonly pendingPings;
     private sequence;
     constructor(configuration: TopologySimulationConfiguration);
@@ -81,6 +83,12 @@ export declare class TopologySimulation {
         readonly interfaceName: string;
         readonly metric: number;
     }[];
+    getLayer3InterfaceEntries(deviceId: string): readonly {
+        readonly name: string;
+        readonly address: string;
+        readonly status: "up" | "down";
+        readonly protocol: "up" | "down";
+    }[];
     ping(sourceDeviceId: string, destinationIp: string, initialTtl?: number, operation?: "ping" | "tracert"): TopologyPingResult;
     private createDevicesAndInterfaces;
     private mapSwitchRunningConfiguration;
@@ -90,8 +98,17 @@ export declare class TopologySimulation {
     private sendRouterControl;
     private normalizeStaticRoutes;
     private findRouterRoute;
+    private refreshLayer3SwitchInterfaces;
+    private createLayer3Host;
+    private getVlanEngineInterface;
+    private receiveLayer3SwitchFrame;
+    private getLayer3Host;
+    private getDeviceHosts;
+    private getLayer3RouteEntries;
     private transmit;
     private receiveEchoReply;
     private receiveIcmpControl;
     private failPing;
+    private isSwitchDevice;
+    private getPingSourceConfiguration;
 }

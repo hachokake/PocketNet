@@ -11,6 +11,39 @@ export function isAppleMobileDevice(navigatorRef) {
     || (navigatorRef.platform === "MacIntel" && navigatorRef.maxTouchPoints > 1);
 }
 
+export function getInstallGuide({ appleMobile, appleSafari, userAgent = "" }) {
+  if (appleMobile) {
+    return {
+      eyebrow: "INSTALLATION SUR APPLE",
+      title: appleSafari ? "Ajouter PocketNet à l’écran d’accueil" : "Ouvrir PocketNet dans Safari",
+      hint: appleSafari
+        ? "Safari installe le site comme une application web autonome sur iPhone et iPad."
+        : "Pour une installation web autonome sur iPhone ou iPad, ouvrez d’abord PocketNet dans Safari.",
+      steps: [
+        "Dans Safari, appuyez sur le bouton Partager.",
+        "Choisissez Ajouter à l’écran d’accueil.",
+        "Confirmez avec Ajouter.",
+      ],
+    };
+  }
+
+  const isAndroidChrome = /Android/i.test(userAgent)
+    && /Chrome/i.test(userAgent)
+    && !/(EdgA|OPR|SamsungBrowser)/i.test(userAgent);
+  return {
+    eyebrow: "INSTALLATION DANS LE NAVIGATEUR",
+    title: "Vérifier l’installation de PocketNet",
+    hint: isAndroidChrome
+      ? "L’invite native n’est pas disponible pour cette visite. Dans le menu Chrome, utilisez uniquement « Installer l’application » ou « Installer PocketNet » si cette option est proposée."
+      : "L’invite native n’est pas disponible pour cette visite. Utilisez uniquement une option explicitement nommée « Installer l’application » ou « Installer PocketNet » si votre navigateur la propose.",
+    steps: [
+      "Ouvrez le menu du navigateur.",
+      "Choisissez l’option explicite d’installation de l’application, si elle existe.",
+      "Si vous ne voyez que « Créer un raccourci » ou une option de favori, annulez : ce n’est pas une installation PWA.",
+    ],
+  };
+}
+
 export function wasInstallDismissed(storage, now = Date.now()) {
   if (!storage) return false;
   try {
@@ -59,8 +92,11 @@ export function initializePwa({
   const installDescription = documentRef.querySelector("#pwa-install-description");
   const installAction = documentRef.querySelector("#pwa-install-action");
   const installDismiss = documentRef.querySelector("#pwa-install-dismiss");
-  const iosDialog = documentRef.querySelector("#pwa-ios-dialog");
-  const iosBrowserHint = documentRef.querySelector("#pwa-ios-browser-hint");
+  const installGuide = documentRef.querySelector("#pwa-install-guide");
+  const installGuideEyebrow = documentRef.querySelector("#pwa-install-guide-eyebrow");
+  const installGuideTitle = documentRef.querySelector("#pwa-install-guide-title");
+  const installGuideHint = documentRef.querySelector("#pwa-install-guide-hint");
+  const installGuideSteps = documentRef.querySelector("#pwa-install-guide-steps");
   const updateNotice = documentRef.querySelector("#pwa-update-notice");
   const updateAction = documentRef.querySelector("#pwa-update-action");
   const connectionIndicator = documentRef.querySelector(".online-dot");
@@ -74,6 +110,7 @@ export function initializePwa({
   let dismissed = wasInstallDismissed(storage);
   let installed = isStandaloneMode(navigatorRef, windowRef);
   let deferredInstallPrompt = null;
+  let installFallbackReady = false;
   let registration = null;
   let waitingWorker = null;
   let reloadAfterActivation = false;
@@ -89,16 +126,35 @@ export function initializePwa({
   }
 
   function renderInstallInvitation() {
-    if (installed || dismissed || (!appleMobile && !deferredInstallPrompt)) {
+    if (installed || dismissed || (!appleMobile && !deferredInstallPrompt && !installFallbackReady)) {
       hideInstallInvitation();
       return;
     }
-    installDescription.textContent = appleMobile
-      ? "Ajoutez PocketNet à votre écran d’accueil pour y accéder rapidement."
-      : "Ouvrez PocketNet rapidement depuis votre écran d’accueil ou votre bureau.";
-    installAction.textContent = appleMobile ? "Instructions" : "Installer";
+    installDescription.textContent = deferredInstallPrompt
+      ? "Installez PocketNet comme application dans une fenêtre dédiée."
+      : appleMobile
+        ? "Ajoutez PocketNet à votre écran d’accueil pour l’ouvrir comme une application."
+        : "Aucune invite native n’est disponible ici. Consultez les instructions sans créer de raccourci.";
+    installAction.textContent = deferredInstallPrompt ? "Installer" : "Instructions";
     installNotice.hidden = false;
     updateNoticeStack();
+  }
+
+  function showInstallGuide() {
+    const guide = getInstallGuide({
+      appleMobile,
+      appleSafari,
+      userAgent,
+    });
+    installGuideEyebrow.textContent = guide.eyebrow;
+    installGuideTitle.textContent = guide.title;
+    installGuideHint.textContent = guide.hint;
+    installGuideSteps.replaceChildren(...guide.steps.map((step) => {
+      const item = documentRef.createElement("li");
+      item.textContent = step;
+      return item;
+    }));
+    if (!installGuide.open) installGuide.showModal();
   }
 
   function updateConnectivity() {
@@ -130,33 +186,38 @@ export function initializePwa({
   });
 
   installAction.addEventListener("click", async () => {
-    if (appleMobile) {
-      iosBrowserHint.hidden = appleSafari;
-      if (!iosDialog.open) iosDialog.showModal();
+    if (appleMobile || !deferredInstallPrompt) {
+      showInstallGuide();
       return;
     }
-    if (!deferredInstallPrompt) return;
 
     const prompt = deferredInstallPrompt;
     deferredInstallPrompt = null;
     try {
       await prompt.prompt();
       const choice = await prompt.userChoice;
-      if (choice.outcome === "accepted") installed = true;
-      hideInstallInvitation();
+      if (choice.outcome === "accepted") {
+        installed = true;
+        hideInstallInvitation();
+      } else {
+        installFallbackReady = true;
+        renderInstallInvitation();
+      }
     } catch (error) {
       console.error("L’invite native d’installation de PocketNet a échoué.", error);
-      hideInstallInvitation();
+      installFallbackReady = true;
+      renderInstallInvitation();
     }
   });
 
-  documentRef.querySelectorAll("[data-close-pwa-ios]").forEach((button) => {
-    button.addEventListener("click", () => iosDialog.close());
+  documentRef.querySelectorAll("[data-close-pwa-guide]").forEach((button) => {
+    button.addEventListener("click", () => installGuide.close());
   });
 
   windowRef.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
     deferredInstallPrompt = event;
+    installFallbackReady = false;
     renderInstallInvitation();
   });
 
@@ -175,6 +236,12 @@ export function initializePwa({
 
   updateConnectivity();
   renderInstallInvitation();
+  windowRef.setTimeout(() => {
+    if (!installed && !dismissed && !deferredInstallPrompt) {
+      installFallbackReady = true;
+      renderInstallInvitation();
+    }
+  }, 2500);
 
   if ("serviceWorker" in navigatorRef) {
     const registerServiceWorker = async () => {

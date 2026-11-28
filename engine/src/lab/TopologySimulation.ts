@@ -5,6 +5,8 @@ import type { SimulationEvent } from "../domain/SimulationEvent.js";
 import { normalizeMacAddress } from "../protocols/arp/arp.js";
 import { EthernetSwitch } from "../protocols/ethernet/EthernetSwitch.js";
 import {
+  CATALYST_3560_MODEL,
+  createDefaultSwitchConfiguration,
   defaultSwitchPortConfiguration,
   type SwitchPersistentConfiguration,
   type SwitchRunningConfiguration,
@@ -91,6 +93,7 @@ interface HostConfiguration {
 interface PendingPing {
   readonly destinationIp: string;
   readonly sequence: number;
+  readonly sourceInterfaceId?: string;
   success: boolean;
   responseType?: IcmpMessage["type"];
   responseIp?: string;
@@ -122,6 +125,8 @@ export class TopologySimulation {
   private readonly switches = new Map<string, EthernetSwitch>();
   private readonly routerInterfaces = new Map<string, HostConfiguration[]>();
   private readonly staticRoutesByDevice = new Map<string, readonly NormalizedStaticRoute[]>();
+  private readonly vlanInterfaces = new Map<string, NetworkInterface>();
+  private readonly layer3HostInterfaceIds = new Map<string, Set<string>>();
   private readonly pendingPings = new Map<string, PendingPing>();
   private sequence = 0;
 
@@ -140,7 +145,7 @@ export class TopologySimulation {
     configuration: SwitchPersistentConfiguration,
   ): SwitchPersistentConfiguration {
     const device = this.configuration.devices.find((candidate) =>
-      candidate.id === deviceId && candidate.kind === "switch");
+      candidate.id === deviceId && this.isSwitchDevice(candidate));
     if (!device) throw new Error(`Le commutateur ${deviceId} est introuvable.`);
     const serializeRunning = (running: SwitchRunningConfiguration): SwitchRunningConfiguration => ({
       ...running,
@@ -157,6 +162,15 @@ export class TopologySimulation {
         if (!interfaceId) throw new Error(`Le port ${entry.portInterfaceId} n’a pas d’identifiant de laboratoire.`);
         return { ...entry, portInterfaceId: interfaceId };
       }),
+      ...(running.routedPorts
+        ? {
+            routedPorts: Object.fromEntries(Object.entries(running.routedPorts).map(([engineId, ipv4]) => {
+              const interfaceId = this.configuredInterfaceIdsByEngineId.get(engineId);
+              if (!interfaceId) throw new Error(`L’interface routée ${engineId} n’a pas d’identifiant de laboratoire.`);
+              return [interfaceId, ipv4];
+            })),
+          }
+        : {}),
     });
     return {
       model: configuration.model,
@@ -173,24 +187,21 @@ export class TopologySimulation {
   }
 
   getArpEntries(deviceId: string): readonly { readonly ipAddress: string; readonly macAddress: string }[] {
-    const hostConfiguration = this.hostsByDevice.get(deviceId);
-    const host = hostConfiguration
-      && this.hostsByInterface.get(hostConfiguration.networkInterface.id);
-    return host
-      ? [...host.arpCache.snapshot].map(([ipAddress, macAddress]) => ({ ipAddress, macAddress }))
-      : [];
+    return this.getDeviceHosts(deviceId).flatMap((host) =>
+      [...host.arpCache.snapshot].map(([ipAddress, macAddress]) => ({ ipAddress, macAddress })));
   }
 
   clearArpEntry(deviceId: string, ipAddress: string): boolean {
-    const hostConfiguration = this.hostsByDevice.get(deviceId);
-    const host = hostConfiguration
-      && this.hostsByInterface.get(hostConfiguration.networkInterface.id);
     const normalizedAddress = normalizeIPv4Address(ipAddress);
-    const deleted = host?.arpCache.delete(normalizedAddress) ?? false;
+    const hosts = this.getDeviceHosts(deviceId);
+    const deleted = hosts.reduce(
+      (removed, host) => host.arpCache.delete(normalizedAddress) || removed,
+      false,
+    );
     if (deleted) {
       this.engine.recordEvent(
         "arp-cache-cleared",
-        `${hostConfiguration?.device.name ?? deviceId} supprime l’entrée ARP de ${normalizedAddress}.`,
+        `${this.configuration.devices.find((device) => device.id === deviceId)?.name ?? deviceId} supprime l’entrée ARP de ${normalizedAddress}.`,
         { layer: "ARP", deviceId, ipAddress: normalizedAddress },
       );
     }
@@ -204,8 +215,12 @@ export class TopologySimulation {
     readonly interfaceName: string;
     readonly metric: number;
   }[] {
-    const device = this.configuration.devices.find((item) => item.id === deviceId && item.kind === "pc");
+    const device = this.configuration.devices.find((item) => item.id === deviceId);
     if (!device) return [];
+    if (device.kind === "layer3-switch") {
+      return this.getLayer3RouteEntries(deviceId);
+    }
+    if (device.kind !== "pc") return [];
     const routes: Array<{
       destination: string;
       netmask: string;
@@ -239,6 +254,40 @@ export class TopologySimulation {
     return routes;
   }
 
+  getLayer3InterfaceEntries(deviceId: string): readonly {
+    readonly name: string;
+    readonly address: string;
+    readonly status: "up" | "down";
+    readonly protocol: "up" | "down";
+  }[] {
+    const networkSwitch = this.switches.get(deviceId);
+    const device = this.configuration.devices.find((item) => item.id === deviceId);
+    if (!networkSwitch || !device || !networkSwitch.supportsLayer3) return [];
+    const entries = (networkSwitch.runningConfiguration.vlanInterfaces ?? []).map((svi) => {
+      const up = svi.enabled && networkSwitch.isVlanOperational(svi.vlanId);
+      return {
+        name: `Vlan${svi.vlanId}`,
+        address: svi.ipv4?.address ?? "unassigned",
+        status: up ? "up" as const : "down" as const,
+        protocol: up ? "up" as const : "down" as const,
+      };
+    });
+    for (const networkInterface of device.interfaces) {
+      const engineInterface = this.interfaces.get(networkInterface.id);
+      const port = engineInterface && networkSwitch.getPortConfiguration(engineInterface.id);
+      if (!engineInterface || !port || port.switchport) continue;
+      const ipv4 = networkSwitch.runningConfiguration.routedPorts?.[engineInterface.id];
+      const up = networkSwitch.isPortOperational(engineInterface.id);
+      entries.push({
+        name: networkInterface.name,
+        address: ipv4?.address ?? "unassigned",
+        status: up ? "up" : "down",
+        protocol: up ? "up" : "down",
+      });
+    }
+    return entries;
+  }
+
   ping(
     sourceDeviceId: string,
     destinationIp: string,
@@ -248,7 +297,8 @@ export class TopologySimulation {
     const normalizedDestinationIp = normalizeIPv4Address(destinationIp);
     const startIndex = this.engine.events.length;
     const sequence = ++this.sequence;
-    const source = this.hostsByDevice.get(sourceDeviceId);
+    const source = this.hostsByDevice.get(sourceDeviceId)
+      ?? this.getLayer3Host(sourceDeviceId, normalizedDestinationIp);
     const sourceIp = source?.ipv4?.address ?? "";
     const packetTtl = validateIPv4Ttl(
       initialTtl ?? source?.device.initialTtl ?? DEFAULT_IPV4_TTL,
@@ -256,6 +306,7 @@ export class TopologySimulation {
     const pending: PendingPing = {
       destinationIp: normalizedDestinationIp,
       sequence,
+      ...(source ? { sourceInterfaceId: source.networkInterface.id } : {}),
       success: false,
     };
     this.pendingPings.set(sourceDeviceId, pending);
@@ -316,7 +367,20 @@ export class TopologySimulation {
     }
     let nextHopIp = normalizedDestinationIp;
     if (!isSameSubnet(source.ipv4.address, normalizedDestinationIp, source.ipv4.subnetMask)) {
-      if (!source.device.defaultGateway) {
+      if (source.device.kind === "layer3-switch") {
+        const route = this.findRouterRoute(sourceDeviceId, normalizedDestinationIp);
+        if (!route) {
+          return this.failPing(
+            startIndex,
+            source.ipv4.address,
+            normalizedDestinationIp,
+            sequence,
+            `Aucune route active ne permet de joindre ${normalizedDestinationIp}.`,
+            "icmp-destination-unreachable",
+          );
+        }
+        nextHopIp = route.nextHopIp;
+      } else if (!source.device.defaultGateway) {
         return this.failPing(
           startIndex,
           source.ipv4.address,
@@ -326,27 +390,29 @@ export class TopologySimulation {
           "icmp-destination-unreachable",
         );
       }
-      try {
-        nextHopIp = normalizeIPv4Address(source.device.defaultGateway);
-      } catch {
-        return this.failPing(
-          startIndex,
-          source.ipv4.address,
-          normalizedDestinationIp,
-          sequence,
-          "La passerelle configurée n’est pas une adresse IPv4 valide.",
-          "icmp-destination-unreachable",
-        );
-      }
-      if (!isSameSubnet(source.ipv4.address, nextHopIp, source.ipv4.subnetMask)) {
-        return this.failPing(
-          startIndex,
-          source.ipv4.address,
-          normalizedDestinationIp,
-          sequence,
-          `La passerelle ${nextHopIp} n’est pas joignable sur le sous-réseau local.`,
-          "icmp-destination-unreachable",
-        );
+      if (source.device.kind !== "layer3-switch") {
+        try {
+          nextHopIp = normalizeIPv4Address(source.device.defaultGateway!);
+        } catch {
+          return this.failPing(
+            startIndex,
+            source.ipv4.address,
+            normalizedDestinationIp,
+            sequence,
+            "La passerelle configurée n’est pas une adresse IPv4 valide.",
+            "icmp-destination-unreachable",
+          );
+        }
+        if (!isSameSubnet(source.ipv4.address, nextHopIp, source.ipv4.subnetMask)) {
+          return this.failPing(
+            startIndex,
+            source.ipv4.address,
+            normalizedDestinationIp,
+            sequence,
+            `La passerelle ${nextHopIp} n’est pas joignable sur le sous-réseau local.`,
+            "icmp-destination-unreachable",
+          );
+        }
       }
     }
 
@@ -503,7 +569,7 @@ export class TopologySimulation {
 
   private createDevicesAndInterfaces(): void {
     for (const device of this.configuration.devices) {
-      const kind = device.kind === "switch"
+      const kind = this.isSwitchDevice(device)
         ? "switch"
         : device.kind === "router"
           ? "router"
@@ -548,6 +614,15 @@ export class TopologySimulation {
         if (!engineInterface) throw new Error(`Le port statique ${entry.portInterfaceId} n’existe pas.`);
         return { ...entry, portInterfaceId: engineInterface.id };
       }),
+      ...(running.routedPorts
+        ? {
+            routedPorts: Object.fromEntries(Object.entries(running.routedPorts).map(([configuredId, ipv4]) => {
+              const engineInterface = this.interfaces.get(configuredId);
+              if (!engineInterface) throw new Error(`L’interface routée ${configuredId} n’existe pas.`);
+              return [engineInterface.id, ipv4];
+            })),
+          }
+        : {}),
     };
   }
 
@@ -566,7 +641,7 @@ export class TopologySimulation {
     for (const device of this.configuration.devices) {
       const engineDevice = this.engineDevices.get(device.id);
       if (!engineDevice) continue;
-      if (device.kind === "switch") {
+      if (this.isSwitchDevice(device)) {
         const portIds = device.interfaces
           .map((networkInterface) => this.interfaces.get(networkInterface.id)?.id)
           .filter((id): id is string => id !== undefined);
@@ -578,14 +653,35 @@ export class TopologySimulation {
                 ? this.mapSwitchRunningConfiguration(device, device.switchConfig.startup)
                 : null,
             }
-          : undefined;
-        this.switches.set(device.id, new EthernetSwitch(
+          : device.kind === "layer3-switch"
+            ? createDefaultSwitchConfiguration(
+                engineDevice.name,
+                portIds,
+                CATALYST_3560_MODEL,
+              )
+            : undefined;
+        if (
+          (device.kind === "layer3-switch"
+            && switchConfiguration?.model !== CATALYST_3560_MODEL)
+          || (device.kind === "switch"
+            && switchConfiguration?.model === CATALYST_3560_MODEL)
+        ) {
+          throw new Error(`Le modèle de commutateur ne correspond pas au type d’équipement ${device.name}.`);
+        }
+        const networkSwitch = new EthernetSwitch(
           engineDevice.name,
           portIds,
           this.engine.topology,
           this.engine,
           switchConfiguration,
-        ));
+        );
+        this.switches.set(device.id, networkSwitch);
+        if (device.kind === "layer3-switch") {
+          networkSwitch.setLayer3FrameHandler((portId, vlanId, frame) =>
+            this.receiveLayer3SwitchFrame(device.id, portId, vlanId, frame));
+          networkSwitch.setConfigurationChangeHandler(() =>
+            this.refreshLayer3SwitchInterfaces(device, networkSwitch));
+        }
         continue;
       }
       if (device.kind === "router") {
@@ -743,6 +839,19 @@ export class TopologySimulation {
       return;
     }
 
+    const networkSwitch = this.switches.get(ingress.device.id);
+    if (
+      ingress.device.kind === "layer3-switch"
+      && networkSwitch?.runningConfiguration.ipRouting !== true
+    ) {
+      this.sendRouterControl(ingress, packet, {
+        type: "destination-unreachable",
+        sequence: packet.payload.sequence,
+        reason: "Le routage IPv4 est désactivé sur le commutateur.",
+      });
+      return;
+    }
+
     const route = this.findRouterRoute(ingress.device.id, packet.destinationIp);
     if (!route) {
       this.sendRouterControl(ingress, packet, {
@@ -877,8 +986,11 @@ export class TopologySimulation {
     egressHost.sendIPv4Packet(destinationMac, response);
   }
 
-  private normalizeStaticRoutes(device: TopologyDeviceConfiguration): readonly NormalizedStaticRoute[] {
-    return (device.staticRoutes ?? []).flatMap((route, index) => {
+  private normalizeStaticRoutes(
+    device: TopologyDeviceConfiguration,
+    routes: readonly TopologyStaticRouteConfiguration[] = device.staticRoutes ?? [],
+  ): readonly NormalizedStaticRoute[] {
+    return routes.flatMap((route, index) => {
       try {
         const configuration = validateIPv4Configuration({
           address: route.destination,
@@ -907,6 +1019,7 @@ export class TopologySimulation {
     interfaces.forEach((networkInterface) => {
       if (
         networkInterface.ipv4
+        && networkInterface.networkInterface.enabled
         && isSameSubnet(
           networkInterface.ipv4.address,
           destinationIp,
@@ -920,10 +1033,16 @@ export class TopologySimulation {
         });
       }
     });
-    (this.staticRoutesByDevice.get(routerDeviceId) ?? []).forEach((route) => {
+    const networkSwitch = this.switches.get(routerDeviceId);
+    const staticRoutesEnabled = networkSwitch?.supportsLayer3
+      ? networkSwitch.runningConfiguration.ipRouting === true
+      : true;
+    (staticRoutesEnabled ? this.staticRoutesByDevice.get(routerDeviceId) ?? [] : []).forEach((route) => {
       if (!isSameSubnet(destinationIp, route.destination, route.subnetMask)) return;
       const egress = interfaces.find((networkInterface) =>
-        networkInterface.ipv4 && isSameSubnet(
+        networkInterface.ipv4
+        && networkInterface.networkInterface.enabled
+        && isSameSubnet(
           networkInterface.ipv4.address,
           route.nextHop,
           networkInterface.ipv4.subnetMask,
@@ -937,6 +1056,240 @@ export class TopologySimulation {
       }
     });
     return candidates.sort((first, second) => second.prefixLength - first.prefixLength)[0];
+  }
+
+  private refreshLayer3SwitchInterfaces(
+    device: TopologyDeviceConfiguration,
+    networkSwitch: EthernetSwitch,
+  ): void {
+    const previousIds = this.layer3HostInterfaceIds.get(device.id) ?? new Set<string>();
+    previousIds.forEach((interfaceId) => {
+      this.hostsByEngineInterface.delete(interfaceId);
+      this.hostsByInterface.delete(interfaceId);
+    });
+    const currentIds = new Set<string>();
+    const interfaces: HostConfiguration[] = [];
+    const engineDevice = this.engineDevices.get(device.id);
+    if (!engineDevice) return;
+
+    for (const svi of networkSwitch.runningConfiguration.vlanInterfaces ?? []) {
+      if (!svi.ipv4) continue;
+      const virtualInterface = this.getVlanEngineInterface(device, engineDevice, svi.vlanId);
+      const networkInterface: TopologyInterfaceConfiguration = {
+        id: virtualInterface.id,
+        name: `Vlan${svi.vlanId}`,
+        macAddress: virtualInterface.macAddress,
+        enabled: svi.enabled && networkSwitch.isVlanOperational(svi.vlanId),
+        ipv4Address: svi.ipv4.address,
+        subnetMask: svi.ipv4.subnetMask,
+      };
+      interfaces.push(this.createLayer3Host(
+        device,
+        engineDevice,
+        virtualInterface,
+        networkInterface,
+        svi.ipv4,
+        (_sourceInterfaceId, frame) => networkSwitch
+          .forwardFromVlan(svi.vlanId, frame)
+          .forEach((egress) => this.transmit(
+            egress.portInterfaceId,
+            egress.frame,
+            new Set([device.id]),
+          )),
+      ));
+      currentIds.add(virtualInterface.id);
+    }
+
+    for (const configuredInterface of device.interfaces) {
+      const engineInterface = this.interfaces.get(configuredInterface.id);
+      if (!engineInterface) continue;
+      const port = networkSwitch.getPortConfiguration(engineInterface.id);
+      if (port.switchport) continue;
+      const ipv4 = networkSwitch.runningConfiguration.routedPorts?.[engineInterface.id];
+      if (!ipv4) continue;
+      const networkInterface: TopologyInterfaceConfiguration = {
+        ...configuredInterface,
+        enabled: networkSwitch.isPortOperational(engineInterface.id),
+        ipv4Address: ipv4.address,
+        subnetMask: ipv4.subnetMask,
+      };
+      interfaces.push(this.createLayer3Host(
+        device,
+        engineDevice,
+        engineInterface,
+        networkInterface,
+        ipv4,
+        (sourceInterfaceId, frame) => {
+          networkSwitch.recordRoutedOutput(sourceInterfaceId);
+          this.transmit(sourceInterfaceId, frame);
+        },
+      ));
+      currentIds.add(engineInterface.id);
+    }
+    this.routerInterfaces.set(device.id, interfaces);
+    this.layer3HostInterfaceIds.set(device.id, currentIds);
+    this.staticRoutesByDevice.set(
+      device.id,
+      this.normalizeStaticRoutes(device, networkSwitch.runningConfiguration.staticRoutes ?? []),
+    );
+  }
+
+  private createLayer3Host(
+    device: TopologyDeviceConfiguration,
+    engineDevice: NetworkDevice,
+    engineInterface: NetworkInterface,
+    networkInterface: TopologyInterfaceConfiguration,
+    ipv4: IPv4Configuration,
+    transmit: (sourceInterfaceId: string, frame: EthernetFrame) => void,
+  ): HostConfiguration {
+    const hostConfiguration: HostConfiguration = {
+      device,
+      networkInterface,
+      engineDevice,
+      engineInterface,
+      ipv4,
+    };
+    const host = new SimulatedHost({
+      device: engineDevice,
+      networkInterface: engineInterface,
+      macAddress: networkInterface.macAddress,
+      ipv4,
+      initialTtl: device.initialTtl,
+      transmit,
+      events: this.engine,
+      onEchoReply: (packet) => this.receiveEchoReply(device.id, packet),
+      onIcmpControl: (packet) => this.receiveIcmpControl(device.id, packet),
+      onForwardPacket: (packet) => this.forwardRouterPacket(hostConfiguration, packet),
+    });
+    this.hostsByInterface.set(networkInterface.id, host);
+    this.hostsByEngineInterface.set(engineInterface.id, host);
+    return hostConfiguration;
+  }
+
+  private getVlanEngineInterface(
+    device: TopologyDeviceConfiguration,
+    engineDevice: NetworkDevice,
+    vlanId: number,
+  ): NetworkInterface {
+    const key = `${device.id}:vlan:${vlanId}`;
+    const existing = this.vlanInterfaces.get(key);
+    if (existing) return existing;
+
+    const usedMacAddresses = new Set(this.configuration.devices.flatMap((item) =>
+      item.interfaces.map((networkInterface) => networkInterface.macAddress.toLowerCase())));
+    this.vlanInterfaces.forEach((networkInterface) => usedMacAddresses.add(networkInterface.macAddress.toLowerCase()));
+    const seed = [...key].reduce((value, character) => (value * 31 + character.charCodeAt(0)) >>> 0, 7);
+    let macAddress = "";
+    for (let attempt = 0; attempt < 256; attempt += 1) {
+      const suffix = (seed + attempt) & 0xffffff;
+      const candidate = `02:ff:${((suffix >>> 16) & 255).toString(16).padStart(2, "0")}:${((suffix >>> 8) & 255).toString(16).padStart(2, "0")}:${(suffix & 255).toString(16).padStart(2, "0")}:${(vlanId & 255).toString(16).padStart(2, "0")}`;
+      if (!usedMacAddresses.has(candidate)) {
+        macAddress = candidate;
+        break;
+      }
+    }
+    if (!macAddress) throw new Error(`Impossible d’allouer une adresse MAC à l’interface Vlan${vlanId}.`);
+    const networkInterface = this.engine.createInterface(engineDevice.id, `Vlan${vlanId}`, macAddress);
+    this.vlanInterfaces.set(key, networkInterface);
+    return networkInterface;
+  }
+
+  private receiveLayer3SwitchFrame(
+    deviceId: string,
+    ingressPortId: string,
+    vlanId: number | null,
+    frame: EthernetFrame,
+  ): boolean {
+    const networkSwitch = this.switches.get(deviceId);
+    if (!networkSwitch) return false;
+    if (vlanId === null) {
+      this.hostsByEngineInterface.get(ingressPortId)?.receiveFrame(frame);
+      return true;
+    }
+    const svi = (networkSwitch.runningConfiguration.vlanInterfaces ?? []).find((item) =>
+      item.vlanId === vlanId && item.enabled && item.ipv4);
+    if (!svi || !networkSwitch.isVlanOperational(vlanId)) return false;
+    const sviInterface = this.vlanInterfaces.get(`${deviceId}:vlan:${vlanId}`);
+    const host = sviInterface && this.hostsByEngineInterface.get(sviInterface.id);
+    if (!host) return false;
+    if (frame.destinationMac === host.macAddress) {
+      host.receiveFrame(frame);
+      return true;
+    }
+    if (
+      frame.etherType === "ARP"
+      && frame.payload.operation === "request"
+      && frame.payload.targetIp === svi.ipv4!.address
+    ) {
+      host.receiveFrame(frame);
+    }
+    return false;
+  }
+
+  private getLayer3Host(deviceId: string, destinationIp?: string): HostConfiguration | undefined {
+    const interfaces = this.routerInterfaces.get(deviceId) ?? [];
+    if (destinationIp) {
+      const route = this.findRouterRoute(deviceId, destinationIp);
+      if (route) return route.egress;
+    }
+    return interfaces.find((item) =>
+      item.device.kind === "layer3-switch" && item.networkInterface.enabled)
+      ?? interfaces.find((item) => item.device.kind === "layer3-switch");
+  }
+
+  private getDeviceHosts(deviceId: string): SimulatedHost[] {
+    const hostConfiguration = this.hostsByDevice.get(deviceId);
+    const hosts = hostConfiguration
+      ? [this.hostsByInterface.get(hostConfiguration.networkInterface.id)]
+      : [];
+    (this.routerInterfaces.get(deviceId) ?? []).forEach((item) =>
+      hosts.push(this.hostsByEngineInterface.get(item.engineInterface.id)));
+    return hosts.filter((host): host is SimulatedHost => host !== undefined);
+  }
+
+  private getLayer3RouteEntries(deviceId: string): readonly {
+    readonly destination: string;
+    readonly netmask: string;
+    readonly gateway: string;
+    readonly interfaceName: string;
+    readonly metric: number;
+  }[] {
+    const networkSwitch = this.switches.get(deviceId);
+    if (!networkSwitch?.runningConfiguration.ipRouting) return [];
+    const interfaces = this.routerInterfaces.get(deviceId) ?? [];
+    const routes: Array<{
+      destination: string;
+      netmask: string;
+      gateway: string;
+      interfaceName: string;
+      metric: number;
+    }> = [];
+    interfaces.forEach((item) => {
+      if (!item.ipv4 || !item.networkInterface.enabled) return;
+      routes.push({
+        destination: getNetworkAddress(item.ipv4.address, item.ipv4.subnetMask),
+        netmask: item.ipv4.subnetMask,
+        gateway: "On-link",
+        interfaceName: item.networkInterface.name,
+        metric: 0,
+      });
+    });
+    (this.staticRoutesByDevice.get(deviceId) ?? []).forEach((route) => {
+      const egress = interfaces.find((item) =>
+        item.ipv4
+        && item.networkInterface.enabled
+        && isSameSubnet(item.ipv4.address, route.nextHop, item.ipv4.subnetMask));
+      if (!egress) return;
+      routes.push({
+        destination: route.destination,
+        netmask: route.subnetMask,
+        gateway: route.nextHop,
+        interfaceName: egress.networkInterface.name,
+        metric: 1,
+      });
+    });
+    return routes.sort((first, second) =>
+      getSubnetPrefixLength(second.netmask) - getSubnetPrefixLength(first.netmask));
   }
 
   private transmit(
@@ -1008,7 +1361,7 @@ export class TopologySimulation {
 
   private receiveEchoReply(sourceDeviceId: string, packet: IPv4Packet): void {
     const pending = this.pendingPings.get(sourceDeviceId);
-    const source = this.hostsByDevice.get(sourceDeviceId);
+    const source = this.getPingSourceConfiguration(sourceDeviceId, pending);
     if (
       !pending
       || !source?.ipv4
@@ -1038,7 +1391,7 @@ export class TopologySimulation {
 
   private receiveIcmpControl(sourceDeviceId: string, packet: IPv4Packet): void {
     const pending = this.pendingPings.get(sourceDeviceId);
-    const source = this.hostsByDevice.get(sourceDeviceId);
+    const source = this.getPingSourceConfiguration(sourceDeviceId, pending);
     if (
       !pending
       || !source?.ipv4
@@ -1083,5 +1436,20 @@ export class TopologySimulation {
       message,
       events: this.engine.events.slice(startIndex),
     };
+  }
+
+  private isSwitchDevice(device: TopologyDeviceConfiguration): boolean {
+    return device.kind === "switch" || device.kind === "layer3-switch";
+  }
+
+  private getPingSourceConfiguration(
+    deviceId: string,
+    pending: PendingPing | undefined,
+  ): HostConfiguration | undefined {
+    if (!pending) return undefined;
+    const hostConfiguration = this.hostsByDevice.get(deviceId);
+    if (hostConfiguration?.networkInterface.id === pending.sourceInterfaceId) return hostConfiguration;
+    return (this.routerInterfaces.get(deviceId) ?? []).find((item) =>
+      item.networkInterface.id === pending.sourceInterfaceId);
   }
 }

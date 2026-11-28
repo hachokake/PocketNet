@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ComputerTerminal, TopologySimulation } from "../dist/index.js";
+import { ComputerTerminal, SwitchTerminal, TopologySimulation } from "../dist/index.js";
 
 function createTopology(overrides = {}) {
   const pc1 = {
@@ -173,6 +173,158 @@ function createRoutedTopology() {
         secondDeviceId: "switch2",
         firstInterfaceId: "pc2-eth0",
         secondInterfaceId: "switch2-port2",
+      },
+    ],
+  };
+}
+
+function createLayer3SwitchTopology(ipRouting = true) {
+  const pc = (id, name, address, gateway, mac) => ({
+    id,
+    name,
+    kind: "pc",
+    defaultGateway: gateway,
+    icmpEnabled: true,
+    interfaces: [{
+      id: `${id}-eth0`,
+      name: "eth0",
+      macAddress: mac,
+      enabled: true,
+      ipv4Address: address,
+      subnetMask: "255.255.255.0",
+    }],
+  });
+  const ports = ["Fa0/1", "Fa0/2", "Fa0/3"].map((name, index) => ({
+    id: `switch-port${index + 1}`,
+    name,
+    macAddress: `02:00:00:00:66:0${index + 1}`,
+    enabled: true,
+  }));
+  const switchConfiguration = (routeEnabled) => {
+    const port = (accessVlan) => ({
+      enabled: true,
+      switchport: true,
+      mode: "access",
+      accessVlan,
+      nativeVlan: 1,
+      allowedVlans: "all",
+      description: "",
+      speedMbps: "auto",
+      duplex: "auto",
+    });
+    return {
+      model: "catalyst-3560",
+      running: {
+        hostname: "Core3560",
+        vlans: [
+          { id: 1, name: "default", status: "active" },
+          { id: 10, name: "Users", status: "active" },
+          { id: 20, name: "Servers", status: "active" },
+          { id: 1002, name: "fddi-default", status: "active" },
+          { id: 1003, name: "token-ring-default", status: "active" },
+          { id: 1004, name: "fddinet-default", status: "active" },
+          { id: 1005, name: "trnet-default", status: "active" },
+        ],
+        ports: {
+          "switch-port1": port(10),
+          "switch-port2": port(20),
+          "switch-port3": port(1),
+        },
+        staticMacEntries: [],
+        macAgingTimeSeconds: 300,
+        consoleLine: { loginRequired: false, password: "" },
+        ipRouting: routeEnabled,
+        vlanInterfaces: [
+          {
+            vlanId: 10,
+            enabled: true,
+            description: "",
+            ipv4: { address: "192.168.10.1", subnetMask: "255.255.255.0" },
+          },
+          {
+            vlanId: 20,
+            enabled: true,
+            description: "",
+            ipv4: { address: "192.168.20.1", subnetMask: "255.255.255.0" },
+          },
+        ],
+        routedPorts: {},
+        staticRoutes: [],
+      },
+      startup: null,
+    };
+  };
+  const pc1 = pc("pc1", "PC1", "192.168.10.10", "192.168.10.1", "02:00:00:00:10:01");
+  const pc2 = pc("pc2", "PC2", "192.168.20.20", "192.168.20.1", "02:00:00:00:20:02");
+  const networkSwitch = {
+    id: "switch",
+    name: "Core3560",
+    kind: "layer3-switch",
+    interfaces: ports,
+    switchConfig: switchConfiguration(ipRouting),
+  };
+  const router = {
+    id: "router",
+    name: "EdgeRouter",
+    kind: "router",
+    staticRoutes: [
+      {
+        destination: "192.168.10.0",
+        subnetMask: "255.255.255.0",
+        nextHop: "192.168.99.2",
+      },
+      {
+        destination: "192.168.20.0",
+        subnetMask: "255.255.255.0",
+        nextHop: "192.168.99.2",
+      },
+    ],
+    interfaces: [
+      {
+        id: "router-g0-0",
+        name: "g0/0",
+        macAddress: "02:00:00:00:99:01",
+        enabled: true,
+        ipv4Address: "192.168.99.1",
+        subnetMask: "255.255.255.0",
+      },
+      {
+        id: "router-g0-1",
+        name: "g0/1",
+        macAddress: "02:00:00:00:99:02",
+        enabled: true,
+        ipv4Address: "172.16.0.1",
+        subnetMask: "255.255.255.0",
+      },
+    ],
+  };
+  const pc3 = pc("pc3", "PC3", "172.16.0.10", "172.16.0.1", "02:00:00:00:30:03");
+  return {
+    devices: [pc1, pc2, networkSwitch, router, pc3],
+    connections: [
+      {
+        firstDeviceId: "pc1",
+        secondDeviceId: "switch",
+        firstInterfaceId: "pc1-eth0",
+        secondInterfaceId: "switch-port1",
+      },
+      {
+        firstDeviceId: "pc2",
+        secondDeviceId: "switch",
+        firstInterfaceId: "pc2-eth0",
+        secondInterfaceId: "switch-port2",
+      },
+      {
+        firstDeviceId: "switch",
+        secondDeviceId: "router",
+        firstInterfaceId: "switch-port3",
+        secondInterfaceId: "router-g0-0",
+      },
+      {
+        firstDeviceId: "router",
+        secondDeviceId: "pc3",
+        firstInterfaceId: "router-g0-1",
+        secondInterfaceId: "pc3-eth0",
       },
     ],
   };
@@ -360,6 +512,161 @@ test("routes ping and traceroute through a router with two configured networks",
   assert.equal(destinationHop.success, true);
   assert.equal(destinationHop.responseType, "echo-reply");
   assert.equal(destinationHop.responseIp, "192.168.2.20");
+});
+
+test("routes between VLANs through active SVI interfaces when Layer 3 routing is enabled", () => {
+  const simulation = new TopologySimulation(createLayer3SwitchTopology());
+  const ping = simulation.ping("pc1", "192.168.20.20");
+
+  assert.equal(ping.success, true);
+  assert.ok(ping.events.some((event) => event.type === "ipv4-packet-forwarded"
+    && event.details.deviceId === "switch"));
+  assert.equal(ping.events.filter((event) => event.type === "ipv4-ttl-decremented").length, 2);
+  assert.deepEqual(simulation.getLayer3InterfaceEntries("switch").map((item) => [
+    item.name, item.address, item.status, item.protocol,
+  ]), [
+    ["Vlan10", "192.168.10.1", "up", "up"],
+    ["Vlan20", "192.168.20.1", "up", "up"],
+  ]);
+});
+
+test("configures and saves Layer 3 switch routes and a real routed port through IOS commands", () => {
+  const topology = createLayer3SwitchTopology();
+  const simulation = new TopologySimulation(topology);
+  const networkSwitch = simulation.getSwitch("switch");
+  const terminal = new SwitchTerminal(networkSwitch, {
+    onConfigurationChange(configuration) {
+      topology.devices = topology.devices.map((device) =>
+        device.id === "switch"
+          ? {
+              ...device,
+              switchConfig: simulation.serializeSwitchConfiguration("switch", configuration),
+            }
+          : device);
+    },
+    getLayer3Interfaces: () => simulation.getLayer3InterfaceEntries("switch"),
+    getRouteEntries: () => simulation.getRouteEntries("switch"),
+    getArpEntries: () => simulation.getArpEntries("switch"),
+    ping: (destinationIp) => simulation.ping("switch", destinationIp),
+  });
+  const execute = (command) => {
+    const result = terminal.execute(command);
+    assert.notEqual(result.tone, "error", `${command}: ${result.output}`);
+    return result.output;
+  };
+
+  execute("enable");
+  execute("configure terminal");
+  execute("interface vlan 10");
+  execute("description User gateway");
+  execute("exit");
+  execute("interface Fa0/3");
+  execute("no switchport");
+  execute("ip address 192.168.99.2 255.255.255.0");
+  execute("exit");
+  execute("ip routing");
+  execute("ip route 172.16.0.0 255.255.255.0 192.168.99.1");
+  execute("end");
+  execute("write memory");
+
+  const routedPortId = networkSwitch.portInterfaceIds[2];
+  assert.equal(networkSwitch.runningConfiguration.routedPorts[routedPortId].address, "192.168.99.2");
+  assert.equal(networkSwitch.startupConfiguration.staticRoutes[0].destination, "172.16.0.0");
+  assert.equal(
+    networkSwitch.startupConfiguration.ports[routedPortId].switchport,
+    false,
+  );
+  assert.match(execute("show ip route"), /172\.16\.0\.0\s+192\.168\.99\.1/);
+  assert.match(execute("show interfaces status"), /Fa0\/3\s+connected\s+routed/);
+  assert.match(execute("show running-config interface Fa0/3"), /no switchport/);
+  assert.match(execute("show running-config interface Vlan10"), /description User gateway/);
+  assert.match(execute("ping 172.16.0.10"), /Réponse ICMP reçue/);
+  assert.match(execute("show ip interface brief"), /Vlan10\s+192\.168\.10\.1\s+up\s+up/);
+  assert.equal(execute("show arp"), execute("show ip arp"));
+
+  execute("configure terminal");
+  execute("no ip routing");
+  execute("end");
+  assert.match(execute("show ip route"), /IP routing is disabled/);
+  execute("configure terminal");
+  execute("ip routing");
+  execute("no ip route 172.16.0.0 255.255.255.0 192.168.99.1");
+  execute("end");
+  assert.doesNotMatch(execute("show ip route"), /172\.16\.0\.0/);
+  execute("configure terminal");
+  execute("ip route 172.16.0.0 255.255.255.0 192.168.99.1");
+
+  execute("interface vlan 10");
+  execute("ip address 192.168.10.1 255.255.255.0");
+  execute("no ip address");
+  assert.equal(
+    networkSwitch.runningConfiguration.vlanInterfaces.find((item) => item.vlanId === 10).ipv4,
+    null,
+  );
+  execute("ip address 192.168.10.1 255.255.255.0");
+  execute("exit");
+
+  execute("interface Fa0/3");
+  execute("no ip address");
+  assert.equal(networkSwitch.runningConfiguration.routedPorts[routedPortId], undefined);
+  execute("ip address 192.168.99.2 255.255.255.0");
+  execute("end");
+
+  const restoredTopology = JSON.parse(JSON.stringify(topology));
+  const restoredSimulation = new TopologySimulation(restoredTopology);
+  assert.equal(restoredSimulation.ping("pc1", "172.16.0.10").success, true);
+});
+
+test("does not route between VLANs until ip routing is enabled", () => {
+  const simulation = new TopologySimulation(createLayer3SwitchTopology(false));
+  const ping = simulation.ping("pc1", "192.168.20.20");
+
+  assert.equal(ping.success, false);
+  assert.equal(ping.responseType, "destination-unreachable");
+  assert.equal(ping.events.some((event) => event.type === "ipv4-packet-forwarded"), false);
+});
+
+test("keeps an SVI down when shut or when its VLAN has no active member ports", () => {
+  const topology = createLayer3SwitchTopology();
+  const simulation = new TopologySimulation(topology);
+  const terminal = new SwitchTerminal(simulation.getSwitch("switch"), {
+    onConfigurationChange(configuration) {
+      topology.devices = topology.devices.map((device) =>
+        device.id === "switch"
+          ? {
+              ...device,
+              switchConfig: simulation.serializeSwitchConfiguration("switch", configuration),
+            }
+          : device);
+    },
+    getLayer3Interfaces: () => simulation.getLayer3InterfaceEntries("switch"),
+    getRouteEntries: () => simulation.getRouteEntries("switch"),
+    getArpEntries: () => simulation.getArpEntries("switch"),
+    ping: (destinationIp) => simulation.ping("switch", destinationIp),
+  });
+  const execute = (command) => {
+    const result = terminal.execute(command);
+    assert.notEqual(result.tone, "error", `${command}: ${result.output}`);
+    return result.output;
+  };
+  execute("enable");
+  execute("configure terminal");
+  execute("interface vlan 20");
+  execute("shutdown");
+  assert.deepEqual(simulation.getLayer3InterfaceEntries("switch")
+    .find((item) => item.name === "Vlan20"), {
+    name: "Vlan20",
+    address: "192.168.20.1",
+    status: "down",
+    protocol: "down",
+  });
+  execute("no shutdown");
+  execute("exit");
+  execute("interface Fa0/2");
+  execute("shutdown");
+  assert.equal(simulation.getLayer3InterfaceEntries("switch")
+    .find((item) => item.name === "Vlan20").status, "down");
+  assert.equal(simulation.ping("pc1", "192.168.20.20").success, false);
 });
 
 test("supports a configured initial TTL and reports the reply's remaining TTL", async () => {

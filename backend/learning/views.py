@@ -1,6 +1,6 @@
 from django.db.models import Count, Q
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET
 
 from .models import Course, Equipment, LearningCategory, Protocol
@@ -85,6 +85,14 @@ def catalog(request):
             for item in Protocol.objects.filter(is_published=True).select_related("course")
         ],
     })
+
+
+def equipment_detail(request, slug):
+    equipment = get_object_or_404(
+        Equipment.objects.filter(is_published=True),
+        slug=slug,
+    )
+    return render(request, "equipment.html", {"equipment_slug": equipment.slug})
 
 
 @require_GET

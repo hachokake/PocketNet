@@ -1,10 +1,60 @@
 from django.test import TestCase
 from django.urls import reverse
 
-from .models import Course, LearningCategory
+from .models import Course, Equipment, LearningCategory
 
 
 class PublicLearningApiTests(TestCase):
+    def test_equipment_catalog_and_published_detail_pages(self):
+        catalog_response = self.client.get(reverse("equipment-root"))
+        self.assertEqual(catalog_response.status_code, 200)
+        self.assertContains(catalog_response, 'data-equipment-slug=""')
+        self.assertContains(catalog_response, 'href="/equipements/"')
+
+        equipment = Equipment.objects.get(slug="ordinateur")
+        detail_response = self.client.get(
+            reverse("equipment-detail", kwargs={"slug": equipment.slug}),
+        )
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertContains(detail_response, 'data-equipment-slug="ordinateur"')
+        self.assertContains(detail_response, 'id="equipment-content"')
+        self.assertContains(detail_response, 'rel="manifest"')
+
+        self.assertEqual(
+            self.client.get(reverse("equipment-detail", kwargs={"slug": "unknown"})).status_code,
+            404,
+        )
+        equipment.is_published = False
+        equipment.save(update_fields=["is_published"])
+        self.assertEqual(
+            self.client.get(
+                reverse("equipment-detail", kwargs={"slug": equipment.slug}),
+            ).status_code,
+            404,
+        )
+
+    def test_learning_navigation_routes_are_served_by_the_spa(self):
+        for route in [
+            reverse("learning-root"),
+            reverse("learning-paths"),
+            reverse("learning-path-detail", kwargs={"slug": "fondamentaux"}),
+            reverse("learning-exercises"),
+            reverse("learning-practical-work"),
+            reverse("learning-documentation"),
+            reverse("learning-glossary"),
+            reverse("learning-course", kwargs={"slug": "introduction-reseaux"}),
+        ]:
+            response = self.client.get(route)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "learning-subnav")
+            self.assertContains(response, 'rel="manifest"')
+            self.assertContains(response, 'id="pwa-install-action"')
+
+        course_response = self.client.get(
+            reverse("learning-course", kwargs={"slug": "introduction-reseaux"}),
+        )
+        self.assertContains(course_response, 'data-course-slug="introduction-reseaux"')
+
     def test_catalog_is_public_and_counts_only_published_courses(self):
         response = self.client.get(reverse("learning-catalog"))
 
